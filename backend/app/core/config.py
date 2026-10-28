@@ -58,8 +58,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _fill_defaults_and_validate(self) -> "Settings":
-        if not self.database_url:
-            self.database_url = f"sqlite:///{self.data_dir / 'app.db'}"
         self.allowed_email_domains = [d.strip().lower() for d in self.allowed_email_domains]
 
         if self.email_backend == "smtp" and not (self.smtp_host and self.smtp_from):
