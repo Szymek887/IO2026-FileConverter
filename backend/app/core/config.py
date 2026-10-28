@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Storage
     data_dir: Path = Path("./data")
     database_url: str = ""  # empty -> SQLite file inside data_dir
+    min_free_disk_bytes: int = 1024**3  # /api/health reports "degraded" below this
 
     # Upload / conversion limits
     max_file_size: int = 250 * 1024 * 1024

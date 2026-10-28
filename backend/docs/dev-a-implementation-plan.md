@@ -108,7 +108,7 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] `tests/conftest.py`: temp `DATA_DIR`/DB per test, `client`, `auth_client` (overrides `get_current_user` with a test user), `clock` fixture to freeze/advance time.
 
 **A6. Health** – `health/router.py`
-- [ ] `GET /api/health`: `ffmpeg` = `shutil.which("ffmpeg")` and `ffprobe` present (cached at startup); `degraded` + `503` if missing or free disk on `DATA_DIR` < 1 GB.
+- [x] `GET /api/health`: `ffmpeg` = `shutil.which("ffmpeg")` and `ffprobe` present (cached at startup); `degraded` + `503` if missing or free disk on `DATA_DIR` < `MIN_FREE_DISK_BYTES` (1 GB).
 
 ✅ **Milestone:** `uv run pytest` green, app boots, `/docs` shows auth + health, Developer B can branch off and register routes/models.
 
