@@ -47,7 +47,9 @@ Result    (job_id FK, timestamp, output_files[] -> URLs, status[success|error], 
 
 ## 3. API contract (agree on Day 1 – both devs code against it)
 
-All errors share one shape: `{"status": "error", "code": "FILE_TOO_LARGE", "message": "<Polish text>"}`.
+Full contract: [`api-contract.md`](api-contract.md) (request/response schemas, error codes, Polish messages) and [`openapi.yaml`](openapi.yaml) (mock server for the frontend). The table below is only an ownership overview.
+
+All errors share one shape: `{"status": "error", "code": "FILE_TOO_LARGE", "message": "<Polish text>", "details": {...}}`.
 
 | Method & path | Auth | Description | Owner |
 |---|---|---|---|
