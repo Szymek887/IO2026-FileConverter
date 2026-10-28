@@ -46,6 +46,19 @@ CORRUPTED_FILE_BY_CATEGORY: dict[str, str] = {
 # Success / status messages
 OTP_SENT = "Wysłaliśmy kod logowania na adres {email}."
 
+# Login code e-mail
+OTP_EMAIL_SUBJECT = "Twój kod logowania – Konwerter plików"
+OTP_EMAIL_BODY = """Dzień dobry,
+
+Twój jednorazowy kod logowania do Konwertera plików multimedialnych to:
+
+    {code}
+
+Kod jest ważny przez {minutes} minut i można go użyć tylko raz.
+
+Jeśli to nie Ty próbujesz się zalogować, zignoruj tę wiadomość.
+"""
+
 # Conversion job results (`result.message` of a job)
 CONVERSION_SUCCESS = "Konwersja zakończona pomyślnie."
 CONVERSION_FAILED = "Nie udało się przekonwertować pliku „{file}”."

@@ -4,6 +4,7 @@
 - `auth_client`: same, but every request is authenticated as `user`.
 - `db`: a session on the test database (commit to make data visible to the app).
 - `clock`: frozen time you can move with `clock.advance(seconds)`.
+- `outbox`: captures login codes "sent" by the app instead of e-mailing/logging them.
 """
 
 from collections.abc import Iterator
@@ -14,6 +15,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.auth.deps import get_current_user
+from app.auth.email import get_email_sender
 from app.auth.models import User
 from app.core import clock as clock_module
 from app.core import db as db_module
@@ -93,3 +95,23 @@ def auth_client(app: FastAPI, user: User) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+class Outbox:
+    """Records login codes sent by the app: `outbox.sent == [(email, code), ...]`."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    async def send_otp(self, email: str, code: str) -> None:
+        self.sent.append((email, code))
+
+    def last_code(self, email: str) -> str:
+        return next(code for to, code in reversed(self.sent) if to == email)
+
+
+@pytest.fixture
+def outbox(app: FastAPI) -> Outbox:
+    outbox = Outbox()
+    app.dependency_overrides[get_email_sender] = lambda: outbox
+    return outbox
