@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    # starttls: port 587 · tls: implicit TLS, port 465 · none: local test servers only
+    smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_timeout_seconds: int = 10
     allowed_email_domains: list[str] = []  # empty -> any domain
 
     @model_validator(mode="after")
@@ -84,6 +87,8 @@ class Settings(BaseSettings):
                 )
             if self.email_backend == "console":
                 raise ValueError("ENV=prod requires EMAIL_BACKEND=smtp")
+            if self.smtp_tls == "none":
+                raise ValueError("ENV=prod requires SMTP_TLS=starttls or tls")
             if not self.cookie_secure:
                 raise ValueError("ENV=prod requires COOKIE_SECURE=true")
         return self

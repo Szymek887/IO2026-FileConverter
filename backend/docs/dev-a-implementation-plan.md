@@ -123,9 +123,9 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] `new_session_token()`, `hash_token(token)`.
 
 **A9. Email sender** – `auth/email.py`
-- [ ] `EmailSender` protocol; `ConsoleEmailSender` (logs `OTP for x: 123456`), `SmtpEmailSender` (aiosmtplib, STARTTLS, 10 s timeout).
-- [ ] Polish e-mail: subject `Twój kod logowania – Konwerter plików`, body with code and validity (10 min), plain text.
-- [ ] Selected by `EMAIL_BACKEND`; injectable dependency so tests capture sent codes.
+- [x] `EmailSender` protocol; `ConsoleEmailSender` (logs `OTP for x: 123456`), `SmtpEmailSender` (aiosmtplib, `SMTP_TLS=starttls|tls|none` – `none` rejected in prod, `SMTP_TIMEOUT_SECONDS=10`); failures raise `EmailSendError`.
+- [x] Polish e-mail: subject `Twój kod logowania – Konwerter plików`, body with code and validity (10 min), plain text.
+- [x] Selected by `EMAIL_BACKEND`; injectable dependency `get_email_sender` – tests use the `outbox` fixture to capture sent codes.
 
 **A10. `POST /api/auth/request-otp`** – `auth/otp.py`, `auth/router.py`
 - [ ] Normalize email (`strip().lower()`), validate with `email-validator` (no DNS check) → `400 INVALID_EMAIL`. Email field typed `str` in schema so we return our own code instead of a generic validation error.

@@ -82,3 +82,8 @@ def test_prod_rejects_unsafe_config(overrides, error):
     kwargs = {"env": "prod", "secret_key": PROD_SECRET, **SMTP, **overrides}
     with pytest.raises(ValidationError, match=error):
         make(**kwargs)
+
+
+def test_prod_rejects_smtp_without_tls():
+    with pytest.raises(ValidationError, match="SMTP_TLS"):
+        make(env="prod", secret_key=PROD_SECRET, smtp_tls="none", **SMTP)
