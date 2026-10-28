@@ -164,9 +164,10 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] `messages.py` additions – see §6 (`CORRUPTED_FILE_BY_CATEGORY`, `NOT_FOUND_FILE`, `CONVERSION_*`, `JOB_INTERRUPTED`; `INVALID_TARGET` with `{target}` already existed).
 
 **B4. Converter interface + FFmpeg helpers** – `converters/__init__.py`, `ffmpeg.py`, `probe.py`
-- [ ] `convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) -> None`, raises `ConversionError(reason, timeout: bool)`.
-- [ ] `run_ffmpeg(args, timeout)` / `run_ffprobe(path, fmt)` with hardening flags; `TimeoutExpired` → kill + `ConversionError(timeout=True)`.
-- [ ] `MediaInfo` dataclass + `probe(path, fmt)`.
+- [x] `convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) -> None`, raises `ConversionError(reason, timeout: bool)`. Dispatches via `CONVERTERS[category]` (filled by B9/B10/B12); writes `dst.part`, renames only if non-empty; any converter exception is wrapped.
+- [x] `run_ffmpeg(src, src_format, output_args, dst, dst_format, timeout)` / `run_ffprobe(src, src_format, timeout)` with hardening flags, forced demuxer **and muxer** (outputs are `*.part`), `-threads` per worker; failure/timeout/missing binary → `FFmpegError(timeout=bool)`.
+- [x] `MediaInfo` (`AudioStream` with bit depth, `VideoStream` with fps, `ImageInfo` with alpha) + `probe(path, fmt)` raising `ProbeError`. Images are fully decoded (catches truncated JPEGs); `MAX_IMAGE_PIXELS` enforced.
+- [x] Tests: `tests/conversion/conftest.py` generates sample media per session; renamed/mismatched/truncated/empty files, audio-only mp4, unicode paths, timeout, command hardening.
 
 ✅ **Milestone:** `GET /api/formats` logic and converter interface exist; spike results shared with A.
 
