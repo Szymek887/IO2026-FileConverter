@@ -118,9 +118,9 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] `User`: `email` (PK, lowercase), `otp_hash`, `otp_expires`, `otp_sent_at`, `otp_attempts`, `session_token_hash` (unique, indexed), `session_expires`, `last_seen`, `created_at`.
 
 **A8. Security helpers** – `core/security.py`
-- [ ] `generate_otp()` → 6 digits via `secrets.randbelow(10**6)`, zero-padded.
-- [ ] `hash_otp(email, code)` HMAC-SHA256; `verify_otp_hash(...)` with `compare_digest`.
-- [ ] `new_session_token()`, `hash_token(token)`.
+- [x] `generate_otp()` → 6 digits via `secrets.randbelow(10**6)`, zero-padded.
+- [x] `hash_otp(email, code)` HMAC-SHA256; `verify_otp(email, code, otp_hash)` with `compare_digest`.
+- [x] `new_session_token()`, `hash_token(token)`.
 
 **A9. Email sender** – `auth/email.py`
 - [ ] `EmailSender` protocol; `ConsoleEmailSender` (logs `OTP for x: 123456`), `SmtpEmailSender` (aiosmtplib, STARTTLS, 10 s timeout).
