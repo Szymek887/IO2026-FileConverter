@@ -154,10 +154,10 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 → Dockerfile needs **only** `apt-get install -y --no-install-recommends ffmpeg`; no `libheif`, no extra codecs (wheel bundles libheif + x265 + libde265). Dev/CI FFmpeg versions differ (9.x vs 7.1) – every flag used in §4 exists in both.
 
 **B2. Format registry** – `formats.py`
-- [ ] `Category` and `Format` `StrEnum`s, `CATEGORY_OF`, `EXTENSION_ALIASES`, `MIME_TYPES` (contract §5 download list), `CATEGORY_LABELS` (`Audio`, `Wideo`, `Obraz`).
-- [ ] `normalize_extension(filename) -> Format | None`, `allowed_targets(fmt) -> list[Format]` (same category minus source, in registry order).
-- [ ] `formats_payload()` → exact `GET /api/formats` body from the contract.
-- [ ] Tests: payload equals the contract example 1:1; `.JPEG` → `jpg`; `archive.tar.gz`, no extension, `.txt` → `None`.
+- [x] `Category` and `Format` `StrEnum`s, `CATEGORY_FORMATS`, `CATEGORY_OF`, `EXTENSION_ALIASES`, `MIME_TYPES` (contract §5 download list), `CATEGORY_LABELS` (`Audio`, `Wideo`, `Obraz`).
+- [x] `format_from_filename(filename) -> Format | None`, `parse_format(value)` (also used for `target_format`), `allowed_targets(fmt)` (same category minus source, in registry order), `can_convert(source, target)`.
+- [x] `GET /api/formats` (moved here from B7 – unblocks the frontend picker): `FormatsResponse` in `schemas.py`, limits from `settings`, requires login.
+- [x] Tests: response equals the contract example 1:1; `.JPEG` → `jpg`; `archive.tar.gz`, no extension, `.txt` → `None`; 18 conversion pairs; `401` without session.
 
 **B3. Settings & messages** (small PR into A's files once the skeleton is merged)
 - [ ] `config.py`: `WORKER_COUNT=2`, `CONVERSION_TIMEOUT_SECONDS=600`, `PROBE_TIMEOUT_SECONDS=30`, `CLEANUP_INTERVAL_SECONDS=600`, `STALE_UPLOAD_SECONDS=3600`, `MAX_IMAGE_PIXELS=100_000_000`, `FFMPEG_PATH="ffmpeg"`, `FFPROBE_PATH="ffprobe"` (A already has `MAX_FILE_SIZE`, `MAX_FILES_PER_JOB`, `OUTPUT_RETENTION_SECONDS`).
@@ -185,7 +185,7 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [ ] Rules 5–8 from §3; probes via `run_in_threadpool`.
 - [ ] On success: rename `.part` files, insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`).
 - [ ] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
-- [ ] `GET /api/formats` endpoint.
+- [x] ~~`GET /api/formats` endpoint~~ – done in B2.
 - [ ] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
 
 ✅ **Milestone M1 (B part):** frontend can upload against the real backend; jobs stay `queued`.
