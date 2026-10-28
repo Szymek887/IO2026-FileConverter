@@ -73,24 +73,24 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 ### Day 1 – Wed 28.10 · Skeleton (blocks Developer B → merge today)
 
 **A1. Project bootstrap**
-- [ ] `uv init`, Python 3.12, deps: `fastapi`, `uvicorn[standard]`, `sqlalchemy`, `pydantic-settings`, `email-validator`, `aiosmtplib`, `python-multipart`; dev: `pytest`, `httpx`, `ruff`.
-- [ ] `ruff` + `pytest` config in `pyproject.toml`.
-- [ ] `README.md`: `uv sync`, `uv run uvicorn app.main:app --reload`, `uv run pytest`.
+- [x] `uv init`, Python 3.12, deps: `fastapi`, `uvicorn[standard]`, `sqlalchemy`, `pydantic-settings`, `email-validator`, `aiosmtplib`, `python-multipart`; dev: `pytest`, `httpx`, `ruff`.
+- [x] `ruff` + `pytest` config in `pyproject.toml`.
+- [x] `README.md`: `uv sync`, `uv run uvicorn app.main:app --reload`, `uv run pytest`.
 
 **A2. Config & clock** – `core/config.py`, `core/clock.py`
-- [ ] Settings (env prefix none, `.env` file):
+- [x] Settings (env prefix none, `.env` file):
   `ENV` (dev|prod), `SECRET_KEY`, `DATA_DIR=./data`, `DATABASE_URL=sqlite:///./data/app.db`,
   `MAX_FILE_SIZE=262144000`, `MAX_FILES_PER_JOB=2`, `MAX_ACTIVE_USERS=10`, `ACTIVE_WINDOW_SECONDS=900`,
   `OTP_TTL_SECONDS=600`, `OTP_RESEND_SECONDS=60`, `OTP_MAX_ATTEMPTS=5`,
   `SESSION_TTL_SECONDS=86400`, `COOKIE_SECURE=true`, `CORS_ORIGINS=["http://localhost:5173"]`,
   `EMAIL_BACKEND=console|smtp`, `SMTP_HOST/PORT/USER/PASSWORD/FROM`, `ALLOWED_EMAIL_DOMAINS=[]`,
   `OUTPUT_RETENTION_SECONDS=86400` (used by B).
-- [ ] Fail fast in `prod` when `SECRET_KEY` is default or `EMAIL_BACKEND=console`.
-- [ ] `.env.example` with all keys documented.
+- [x] Fail fast in `prod` when `SECRET_KEY` is default or `EMAIL_BACKEND=console`.
+- [x] `.env.example` with all keys documented.
 
 **A3. Database** – `core/db.py`
-- [ ] Engine with `check_same_thread=False`, `PRAGMA journal_mode=WAL` + `foreign_keys=ON` on connect.
-- [ ] `Base` (DeclarativeBase), `SessionLocal`, `get_db()` dependency, `init_db()` called in lifespan (creates `DATA_DIR` and tables).
+- [x] Engine with `check_same_thread=False`, `PRAGMA journal_mode=WAL` + `foreign_keys=ON` on connect.
+- [x] `Base` (DeclarativeBase), `SessionLocal`, `get_db()` dependency, `init_db()` called in lifespan (creates `DATA_DIR` and tables).
 
 **A4. Errors & messages** – `core/errors.py`, `core/messages.py`
 - [ ] `class AppError(Exception): code, message, http_status, details=None`.
