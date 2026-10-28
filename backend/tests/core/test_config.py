@@ -32,6 +32,23 @@ def test_defaults_match_requirements():
     assert s.email_backend == "console"
 
 
+def test_conversion_defaults():
+    s = make()
+    assert s.worker_count == 2
+    assert s.conversion_timeout_seconds == 600
+    assert s.output_retention_seconds == 86_400
+    assert s.max_image_pixels == 100_000_000
+    assert (s.ffmpeg_path, s.ffprobe_path) == ("ffmpeg", "ffprobe")
+
+
+@pytest.mark.parametrize(
+    "field", ["worker_count", "conversion_timeout_seconds", "cleanup_interval_seconds"]
+)
+def test_conversion_settings_must_be_positive(field):
+    with pytest.raises(ValidationError, match=field):
+        make(**{field: 0})
+
+
 def test_reads_environment_variables(monkeypatch):
     monkeypatch.setenv("MAX_ACTIVE_USERS", "3")
     monkeypatch.setenv("CORS_ORIGINS", '["http://a.test", "http://b.test"]')

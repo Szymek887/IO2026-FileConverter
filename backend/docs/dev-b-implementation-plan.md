@@ -160,8 +160,8 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests: response equals the contract example 1:1; `.JPEG` → `jpg`; `archive.tar.gz`, no extension, `.txt` → `None`; 18 conversion pairs; `401` without session.
 
 **B3. Settings & messages** (small PR into A's files once the skeleton is merged)
-- [ ] `config.py`: `WORKER_COUNT=2`, `CONVERSION_TIMEOUT_SECONDS=600`, `PROBE_TIMEOUT_SECONDS=30`, `CLEANUP_INTERVAL_SECONDS=600`, `STALE_UPLOAD_SECONDS=3600`, `MAX_IMAGE_PIXELS=100_000_000`, `FFMPEG_PATH="ffmpeg"`, `FFPROBE_PATH="ffprobe"` (A already has `MAX_FILE_SIZE`, `MAX_FILES_PER_JOB`, `OUTPUT_RETENTION_SECONDS`).
-- [ ] `messages.py` additions – see §6.
+- [x] `config.py`: `WORKER_COUNT=2`, `CONVERSION_TIMEOUT_SECONDS=600`, `PROBE_TIMEOUT_SECONDS=30`, `CLEANUP_INTERVAL_SECONDS=600`, `STALE_UPLOAD_SECONDS=3600`, `MAX_IMAGE_PIXELS=100_000_000`, `FFMPEG_PATH="ffmpeg"`, `FFPROBE_PATH="ffprobe"` (A already has `MAX_FILE_SIZE`, `MAX_FILES_PER_JOB`, `OUTPUT_RETENTION_SECONDS`). Numeric ones are `PositiveInt`; documented in `.env.example`; `/api/health` checks `FFMPEG_PATH`/`FFPROBE_PATH`.
+- [x] `messages.py` additions – see §6 (`CORRUPTED_FILE_BY_CATEGORY`, `NOT_FOUND_FILE`, `CONVERSION_*`, `JOB_INTERRUPTED`; `INVALID_TARGET` with `{target}` already existed).
 
 **B4. Converter interface + FFmpeg helpers** – `converters/__init__.py`, `ffmpeg.py`, `probe.py`
 - [ ] `convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) -> None`, raises `ConversionError(reason, timeout: bool)`.
