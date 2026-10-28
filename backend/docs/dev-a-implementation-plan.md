@@ -89,8 +89,8 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] `.env.example` with all keys documented.
 
 **A3. Database** – `core/db.py`
-- [ ] Engine with `check_same_thread=False`, `PRAGMA journal_mode=WAL` + `foreign_keys=ON` on connect.
-- [ ] `Base` (DeclarativeBase), `SessionLocal`, `get_db()` dependency, `init_db()` called in lifespan (creates `DATA_DIR` and tables).
+- [x] Engine with `check_same_thread=False`, `PRAGMA journal_mode=WAL` + `foreign_keys=ON` on connect.
+- [x] `Base` (DeclarativeBase), `SessionLocal`, `get_db()` dependency, `init_db()` called in lifespan (creates `DATA_DIR` and tables).
 
 **A4. Errors & messages** – `core/errors.py`, `core/messages.py`
 - [ ] `class AppError(Exception): code, message, http_status, details=None`.
