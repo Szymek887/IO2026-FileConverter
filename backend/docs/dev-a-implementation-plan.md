@@ -103,9 +103,9 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
   - `Exception` → `500 INTERNAL_ERROR` + log traceback
 
 **A5. App factory** – `main.py`
-- [ ] `create_app()` with lifespan (`init_db`), CORS (`allow_credentials=True`, origins from config), handlers, routers: auth, health, conversion (empty `APIRouter` placeholder for B).
-- [ ] `get_current_user` **interface frozen today**: `def get_current_user(...) -> User` raising `UNAUTHENTICATED`. Today it may be a working minimal version reading the cookie; tests use `dependency_overrides`.
-- [ ] `tests/conftest.py`: temp `DATA_DIR`/DB per test, `client`, `auth_client` (overrides `get_current_user` with a test user), `clock` fixture to freeze/advance time.
+- [x] `create_app()` with lifespan (`init_db`), CORS (`allow_credentials=True`, origins from config), handlers, routers: auth, health, conversion (empty `APIRouter` placeholder for B).
+- [x] `get_current_user` **interface frozen today**: `def get_current_user(...) -> User` raising `UNAUTHENTICATED` (+ `CurrentUser` type alias). Stub that always returns 401 until A12; tests use `auth_client` (`dependency_overrides`).
+- [x] `tests/conftest.py`: temp `DATA_DIR`/DB per test, `client`, `auth_client` (overrides `get_current_user` with a test user), `clock` fixture to freeze/advance time.
 
 **A6. Health** – `health/router.py`
 - [ ] `GET /api/health`: `ffmpeg` = `shutil.which("ffmpeg")` and `ffprobe` present (cached at startup); `degraded` + `503` if missing or free disk on `DATA_DIR` < 1 GB.
@@ -114,8 +114,8 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 
 ### Day 2 – Thu 29.10 · OTP login
 
-**A7. User model** – `auth/models.py`
-- [ ] `User`: `email` (PK, lowercase), `otp_hash`, `otp_expires`, `otp_sent_at`, `otp_attempts`, `session_token_hash` (unique, indexed), `session_expires`, `last_seen`, `created_at`.
+**A7. User model** – `auth/models.py` *(done together with A5 – B's `Job` needs the `users.email` FK target)*
+- [x] `User`: `email` (PK, lowercase), `otp_hash`, `otp_expires`, `otp_sent_at`, `otp_attempts`, `session_token_hash` (unique, indexed), `session_expires`, `last_seen`, `created_at`.
 
 **A8. Security helpers** – `core/security.py`
 - [ ] `generate_otp()` → 6 digits via `secrets.randbelow(10**6)`, zero-padded.
@@ -207,11 +207,11 @@ from app.core.db import Base, get_db, SessionLocal   # models + request DB sessi
 from app.core.errors import ErrorCode, error         # raise error(ErrorCode.UNSUPPORTED_FORMAT, file=name)
 from app.core import messages                        # Polish texts; add B's messages here
 from app.core.clock import now                       # epoch seconds
-from app.auth.deps import get_current_user           # -> User (user.email)
+from app.auth.deps import CurrentUser, get_current_user  # endpoint param `user: CurrentUser` -> User
 from app.auth.models import User                     # FK target: users.email
 ```
 - B registers `app/conversion/router.py` (`router = APIRouter(prefix="/api")`) – already included by `create_app()`.
-- B registers startup tasks (worker, cleanup) via a `lifespan` hook function `conversion.startup(app)` / `shutdown(app)` that A's lifespan calls.
+- B registers startup tasks (worker, cleanup) via `conversion.startup(app)` / `shutdown(app)` in `app/conversion/__init__.py` (plain sync functions, called by A's lifespan inside the running event loop – `asyncio.create_task` works there). Placeholders exist; B replaces them and imports `conversion.models` there.
 - Tests: use the `auth_client` fixture for authenticated requests.
 
 ---
