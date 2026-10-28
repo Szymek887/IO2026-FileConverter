@@ -93,10 +93,10 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] `Base` (DeclarativeBase), `SessionLocal`, `get_db()` dependency, `init_db()` called in lifespan (creates `DATA_DIR` and tables).
 
 **A4. Errors & messages** – `core/errors.py`, `core/messages.py`
-- [ ] `class AppError(Exception): code, message, http_status, details=None`.
-- [ ] `messages.py`: dict `code → Polish template` for **all 18 codes** from the contract (B only adjusts texts / adds variants).
-- [ ] Helper `error(code, http_status, **fmt)` → `AppError` with formatted message (e.g. `file=...`).
-- [ ] Handlers producing `{"status":"error","code","message","details"}`:
+- [x] `class AppError(Exception): code, message, http_status, details=None`; `ErrorCode` StrEnum + `HTTP_STATUS` map (status is fixed per code, as in the contract).
+- [x] `messages.py`: dict `code → Polish template` for **all 18 codes** from the contract (B only adjusts texts / adds variants), plus non-error texts.
+- [x] Helper `error(code, *, message=None, **details)` → `AppError`; kwargs fill the template and become `details` (e.g. `file=...`).
+- [x] Handlers producing `{"status":"error","code","message","details"}`:
   - `AppError` → as defined
   - `RequestValidationError` → `400 VALIDATION_ERROR`, `details.fields = {field: msg}`
   - `StarletteHTTPException` 404/405 → `NOT_FOUND`
@@ -204,7 +204,8 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 ```python
 from app.core.config import settings                 # limits, DATA_DIR, retention
 from app.core.db import Base, get_db, SessionLocal   # models + request DB session; SessionLocal for worker threads
-from app.core.errors import AppError, error          # raise error("FILE_TOO_LARGE", 413, file=name)
+from app.core.errors import ErrorCode, error         # raise error(ErrorCode.UNSUPPORTED_FORMAT, file=name)
+from app.core import messages                        # Polish texts; add B's messages here
 from app.core.clock import now                       # epoch seconds
 from app.auth.deps import get_current_user           # -> User (user.email)
 from app.auth.models import User                     # FK target: users.email
