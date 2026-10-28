@@ -30,7 +30,7 @@ def test_database(tmp_path, monkeypatch) -> Iterator[None]:
     data_dir = tmp_path / "data"
     monkeypatch.setattr(settings, "data_dir", data_dir)
 
-    engine = db_module.create_db_engine(f"sqlite:///{data_dir / 'app.db'}")
+    engine = db_module.create_db_engine(db_module.sqlite_url(data_dir / "app.db"))
     original_engine = db_module.engine
     monkeypatch.setattr(db_module, "engine", engine)
     # Rebind the shared sessionmaker so code that imported SessionLocal also uses the test DB.

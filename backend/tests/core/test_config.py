@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -32,14 +30,6 @@ def test_defaults_match_requirements():
     assert s.max_active_users == 10
     assert s.otp_ttl_seconds == 600
     assert s.email_backend == "console"
-
-
-def test_database_url_defaults_to_sqlite_in_data_dir():
-    assert make(data_dir=Path("/data")).database_url == "sqlite:////data/app.db"
-
-
-def test_explicit_database_url_is_kept():
-    assert make(database_url="sqlite:///:memory:").database_url == "sqlite:///:memory:"
 
 
 def test_reads_environment_variables(monkeypatch):

@@ -1,13 +1,14 @@
 import threading
+from pathlib import Path
 
 import pytest
-from sqlalchemy import ForeignKey, inspect, text
+from sqlalchemy import ForeignKey, inspect, make_url, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 
 from app.core import db as db_module
 from app.core.config import settings
-from app.core.db import Base, create_db_engine, get_db, init_db
+from app.core.db import Base, create_db_engine, database_url, get_db, init_db, sqlite_url
 
 
 class Parent(Base):
@@ -32,7 +33,7 @@ def drop_test_models():
 @pytest.fixture
 def engine(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "data_dir", tmp_path / "data")
-    engine = create_db_engine(f"sqlite:///{tmp_path / 'nested' / 'app.db'}")
+    engine = create_db_engine(sqlite_url(tmp_path / "nested" / "app.db"))
     yield engine
     engine.dispose()
 
@@ -92,3 +93,33 @@ def test_get_db_yields_session_and_closes_it(engine, monkeypatch):
 
     with Session(engine) as fresh:
         assert fresh.get(Parent, 1) is None  # uncommitted work was rolled back
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\Users\Jan Kowalski\AppData\Local\Temp\data\app.db",
+        r"data\app.db",
+        "/tmp/100% sure?/#1/app.db",
+    ],
+)
+def test_sqlite_url_keeps_any_path_intact(path):
+    assert make_url(sqlite_url(Path(path))).database == str(Path(path))
+
+
+def test_database_url_defaults_to_sqlite_file_in_data_dir(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(settings, "data_dir", tmp_path / "data")
+    assert make_url(database_url()).database == str(tmp_path / "data" / "app.db")
+
+
+def test_explicit_database_url_is_used(monkeypatch):
+    monkeypatch.setattr(settings, "database_url", "sqlite:///:memory:")
+    assert database_url() == "sqlite:///:memory:"
+
+
+def test_engine_works_with_special_characters_in_path(tmp_path):
+    engine = create_db_engine(sqlite_url(tmp_path / "100% sure" / "#1 data" / "app.db"))
+    init_db(engine)
+    assert (tmp_path / "100% sure" / "#1 data" / "app.db").is_file()
+    engine.dispose()

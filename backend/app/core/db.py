@@ -8,7 +8,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import URL, Engine, create_engine, event, make_url
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -27,8 +27,24 @@ def _set_sqlite_pragmas(dbapi_connection, _connection_record) -> None:
     cursor.close()
 
 
-def create_db_engine(url: str) -> Engine:
-    if not url.startswith("sqlite"):
+def sqlite_url(path: Path) -> URL:
+    """SQLite URL for a file path.
+
+    Built from parts instead of an f-string: SQLAlchemy would otherwise read characters
+    like `%`, `?` or `#` in a path as URL syntax and misparse Windows paths
+    such as `C:\\Users\\...`.
+    """
+    return URL.create("sqlite", database=str(path))
+
+
+def database_url() -> str | URL:
+    """`DATABASE_URL` if set, otherwise an SQLite file inside `DATA_DIR`."""
+    return settings.database_url or sqlite_url(settings.data_dir / "app.db")
+
+
+def create_db_engine(url: str | URL) -> Engine:
+    url = make_url(url)
+    if url.get_backend_name() != "sqlite":
         return create_engine(url)
     # Connections are shared between FastAPI's threadpool and the worker threads.
     engine = create_engine(url, connect_args={"check_same_thread": False})
@@ -36,7 +52,7 @@ def create_db_engine(url: str) -> Engine:
     return engine
 
 
-engine = create_db_engine(settings.database_url)
+engine = create_db_engine(database_url())
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
