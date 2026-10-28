@@ -1,0 +1,576 @@
+openapi: 3.1.0
+info:
+  title: Multimedia File Converter API
+  version: "1.0.0"
+  description: |
+    Contract between frontend and backend. Human-readable version: `api-contract.md`.
+    All `message` fields are in Polish. Timestamps are Unix epoch seconds.
+servers:
+  - url: http://localhost:8000
+    description: Local backend
+  - url: http://127.0.0.1:4010
+    description: Prism mock server
+
+tags:
+  - name: auth
+  - name: formats
+  - name: jobs
+  - name: health
+
+paths:
+  /api/auth/request-otp:
+    post:
+      tags: [auth]
+      summary: Send a one-time login code to the e-mail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestOtpRequest" }
+            example: { email: jan.kowalski@example.com }
+      responses:
+        "202":
+          description: Code sent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestOtpResponse" }
+              example:
+                status: ok
+                message: Wysłaliśmy kod logowania na adres jan.kowalski@example.com.
+                otp_expires: 1793103000
+                resend_available_in: 60
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/auth/verify-otp:
+    post:
+      tags: [auth]
+      summary: Verify the code and start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyOtpRequest" }
+            example: { email: jan.kowalski@example.com, code: "482913" }
+      responses:
+        "200":
+          description: Logged in; session cookie set
+          headers:
+            Set-Cookie:
+              description: "`session=<token>; HttpOnly; Secure; SameSite=Lax; Path=/`"
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionInfo" }
+              example: { email: jan.kowalski@example.com, session_expires: 1793189400 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: INVALID_OTP or OTP_EXPIRED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: INVALID_OTP
+                message: Nieprawidłowy kod logowania.
+                details: null
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "503":
+          description: USER_LIMIT_REACHED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: USER_LIMIT_REACHED
+                message: Osiągnięto limit 10 jednocześnie zalogowanych użytkowników. Spróbuj ponownie później.
+                details: null
+
+  /api/auth/me:
+    get:
+      tags: [auth]
+      summary: Current session
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionInfo" }
+              example: { email: jan.kowalski@example.com, session_expires: 1793189400 }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: End the session (idempotent)
+      security: [{ sessionCookie: [] }, {}]
+      responses:
+        "204":
+          description: Logged out, cookie cleared
+
+  /api/formats:
+    get:
+      tags: [formats]
+      summary: Supported formats, limits and allowed conversions
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Format registry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FormatsResponse" }
+              example:
+                max_file_size: 262144000
+                max_files_per_job: 2
+                categories:
+                  - { id: audio, label: Audio, formats: [flac, mp3, wav] }
+                  - { id: video, label: Wideo, formats: [gif, mp4, mov] }
+                  - { id: image, label: Obraz, formats: [jpg, png, heic] }
+                conversions:
+                  flac: [mp3, wav]
+                  mp3: [flac, wav]
+                  wav: [flac, mp3]
+                  gif: [mp4, mov]
+                  mp4: [gif, mov]
+                  mov: [gif, mp4]
+                  jpg: [png, heic]
+                  png: [jpg, heic]
+                  heic: [jpg, png]
+                extension_aliases: { jpeg: jpg, heif: heic }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/jobs:
+    post:
+      tags: [jobs]
+      summary: Upload 1–2 files and start conversion
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files, target_format]
+              properties:
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 2
+                  items: { type: string, format: binary }
+                  description: Repeat the `files` field for each file. Max 250 MB per file.
+                target_format: { $ref: "#/components/schemas/Format" }
+            encoding:
+              files:
+                style: form
+                explode: true
+      responses:
+        "202":
+          description: Job accepted and queued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+              example:
+                id: 7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80
+                created_at: 1793102400
+                target_format: mp3
+                status: queued
+                files:
+                  - { id: 1c2d3e4f-0000-4000-8000-000000000001, name: nagranie.wav, extension: wav, category: audio, size: 52428800 }
+                  - { id: 1c2d3e4f-0000-4000-8000-000000000002, name: muzyka.flac, extension: flac, category: audio, size: 31457280 }
+                result: null
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "413":
+          description: FILE_TOO_LARGE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: FILE_TOO_LARGE
+                message: Plik „film.mov” przekracza maksymalny rozmiar 250 MB.
+                details: { file: film.mov }
+        "415":
+          description: UNSUPPORTED_FORMAT
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: UNSUPPORTED_FORMAT
+                message: Format pliku „dokument.pdf” nie jest obsługiwany.
+                details: { file: dokument.pdf }
+        "422":
+          description: CORRUPTED_FILE
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: CORRUPTED_FILE
+                message: Plik „zdjecie.png” jest uszkodzony lub nie jest prawidłowym obrazem.
+                details: { file: zdjecie.png }
+    get:
+      tags: [jobs]
+      summary: Current user's jobs from the last 24 h (nice-to-have)
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Job list, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Job" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /api/jobs/{job_id}:
+    get:
+      tags: [jobs]
+      summary: Job status and result (poll every 1–2 s until done/error)
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: Job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Job" }
+              examples:
+                processing:
+                  summary: Still converting
+                  value:
+                    id: 7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80
+                    created_at: 1793102400
+                    target_format: mp3
+                    status: processing
+                    files:
+                      - { id: 1c2d3e4f-0000-4000-8000-000000000001, name: nagranie.wav, extension: wav, category: audio, size: 52428800 }
+                      - { id: 1c2d3e4f-0000-4000-8000-000000000002, name: muzyka.flac, extension: flac, category: audio, size: 31457280 }
+                    result: null
+                done:
+                  summary: Finished successfully
+                  value:
+                    id: 7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80
+                    created_at: 1793102400
+                    target_format: mp3
+                    status: done
+                    files:
+                      - { id: 1c2d3e4f-0000-4000-8000-000000000001, name: nagranie.wav, extension: wav, category: audio, size: 52428800 }
+                      - { id: 1c2d3e4f-0000-4000-8000-000000000002, name: muzyka.flac, extension: flac, category: audio, size: 31457280 }
+                    result:
+                      finished_at: 1793102461
+                      status: success
+                      message: Konwersja zakończona pomyślnie.
+                      output_files:
+                        - { index: 0, name: nagranie.mp3, size: 4812345, url: /api/jobs/7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80/files/0 }
+                        - { index: 1, name: muzyka.mp3, size: 3911002, url: /api/jobs/7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80/files/1 }
+                      expires_at: 1793188861
+                error:
+                  summary: Conversion failed
+                  value:
+                    id: 7f3a9c2e-4b1d-4e8a-9c3f-2a1b5d6e7f80
+                    created_at: 1793102400
+                    target_format: gif
+                    status: error
+                    files:
+                      - { id: 1c2d3e4f-0000-4000-8000-000000000003, name: film.mov, extension: mov, category: video, size: 104857600 }
+                    result:
+                      finished_at: 1793102480
+                      status: error
+                      message: Nie udało się przekonwertować pliku „film.mov”.
+                      output_files: []
+                      expires_at: null
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/jobs/{job_id}/files/{index}:
+    get:
+      tags: [jobs]
+      summary: Download a converted file
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+        - name: index
+          in: path
+          required: true
+          description: 0-based index from `result.output_files`
+          schema: { type: integer, minimum: 0, maximum: 1 }
+      responses:
+        "200":
+          description: File content
+          headers:
+            Content-Disposition:
+              description: "`attachment; filename*=UTF-8''nagranie.mp3`"
+              schema: { type: string }
+          content:
+            audio/mpeg: { schema: { type: string, format: binary } }
+            audio/flac: { schema: { type: string, format: binary } }
+            audio/wav: { schema: { type: string, format: binary } }
+            image/gif: { schema: { type: string, format: binary } }
+            video/mp4: { schema: { type: string, format: binary } }
+            video/quicktime: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/heic: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410":
+          description: FILE_EXPIRED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                code: FILE_EXPIRED
+                message: Plik wynikowy wygasł. Wykonaj konwersję ponownie.
+                details: null
+
+  /api/health:
+    get:
+      tags: [health]
+      summary: Liveness check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: ok, ffmpeg: true }
+        "503":
+          description: Degraded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+              example: { status: degraded, ffmpeg: false }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: VALIDATION_ERROR, INVALID_EMAIL, NO_FILES, TOO_MANY_FILES, INVALID_TARGET
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            code: TOO_MANY_FILES
+            message: Możesz przesłać maksymalnie 2 pliki naraz.
+            details: null
+    Unauthenticated:
+      description: UNAUTHENTICATED
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            code: UNAUTHENTICATED
+            message: Sesja wygasła. Zaloguj się ponownie.
+            details: null
+    Forbidden:
+      description: FORBIDDEN
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            code: FORBIDDEN
+            message: Brak dostępu do tego zadania.
+            details: null
+    NotFound:
+      description: NOT_FOUND
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            code: NOT_FOUND
+            message: Nie znaleziono zadania.
+            details: null
+    TooManyRequests:
+      description: OTP_RATE_LIMITED or TOO_MANY_ATTEMPTS
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            code: OTP_RATE_LIMITED
+            message: Nowy kod możesz wysłać za 42 s.
+            details: { retry_after_seconds: 42 }
+
+  schemas:
+    Format:
+      type: string
+      enum: [flac, mp3, wav, gif, mp4, mov, jpg, png, heic]
+
+    Category:
+      type: string
+      enum: [audio, video, image]
+
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - INVALID_EMAIL
+        - UNAUTHENTICATED
+        - INVALID_OTP
+        - OTP_EXPIRED
+        - OTP_RATE_LIMITED
+        - TOO_MANY_ATTEMPTS
+        - USER_LIMIT_REACHED
+        - NO_FILES
+        - TOO_MANY_FILES
+        - FILE_TOO_LARGE
+        - UNSUPPORTED_FORMAT
+        - CORRUPTED_FILE
+        - INVALID_TARGET
+        - FORBIDDEN
+        - NOT_FOUND
+        - FILE_EXPIRED
+        - INTERNAL_ERROR
+
+    Error:
+      type: object
+      required: [status, code, message]
+      properties:
+        status: { type: string, const: error }
+        code: { $ref: "#/components/schemas/ErrorCode" }
+        message: { type: string, description: Polish, user-facing }
+        details:
+          type: [object, "null"]
+          properties:
+            file: { type: string }
+            retry_after_seconds: { type: integer }
+            fields: { type: object, additionalProperties: { type: string } }
+
+    RequestOtpRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    RequestOtpResponse:
+      type: object
+      required: [status, message, otp_expires, resend_available_in]
+      properties:
+        status: { type: string, const: ok }
+        message: { type: string }
+        otp_expires: { type: integer, description: epoch seconds }
+        resend_available_in: { type: integer, description: seconds }
+
+    VerifyOtpRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string, pattern: "^[0-9]{6}$" }
+
+    SessionInfo:
+      type: object
+      required: [email, session_expires]
+      properties:
+        email: { type: string, format: email }
+        session_expires: { type: integer, description: epoch seconds }
+
+    FormatsResponse:
+      type: object
+      required: [max_file_size, max_files_per_job, categories, conversions, extension_aliases]
+      properties:
+        max_file_size: { type: integer, description: bytes }
+        max_files_per_job: { type: integer }
+        categories:
+          type: array
+          items:
+            type: object
+            required: [id, label, formats]
+            properties:
+              id: { $ref: "#/components/schemas/Category" }
+              label: { type: string }
+              formats:
+                type: array
+                items: { $ref: "#/components/schemas/Format" }
+        conversions:
+          type: object
+          description: Source format → allowed target formats
+          additionalProperties:
+            type: array
+            items: { $ref: "#/components/schemas/Format" }
+        extension_aliases:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/Format" }
+
+    InputFile:
+      type: object
+      required: [id, name, extension, category, size]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        extension: { $ref: "#/components/schemas/Format" }
+        category: { $ref: "#/components/schemas/Category" }
+        size: { type: integer, description: bytes }
+
+    OutputFile:
+      type: object
+      required: [index, name, size, url]
+      properties:
+        index: { type: integer }
+        name: { type: string }
+        size: { type: integer, description: bytes }
+        url: { type: string, description: Relative download URL }
+
+    Result:
+      type: object
+      required: [finished_at, status, message, output_files, expires_at]
+      properties:
+        finished_at: { type: integer, description: epoch seconds }
+        status: { type: string, enum: [success, error] }
+        message: { type: string, description: Polish, user-facing }
+        output_files:
+          type: array
+          items: { $ref: "#/components/schemas/OutputFile" }
+        expires_at: { type: [integer, "null"], description: epoch seconds; null on error }
+
+    Job:
+      type: object
+      required: [id, created_at, target_format, status, files, result]
+      properties:
+        id: { type: string, format: uuid }
+        created_at: { type: integer, description: epoch seconds }
+        target_format: { $ref: "#/components/schemas/Format" }
+        status: { type: string, enum: [queued, processing, done, error] }
+        files:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items: { $ref: "#/components/schemas/InputFile" }
+        result:
+          oneOf:
+            - { $ref: "#/components/schemas/Result" }
+            - { type: "null" }
+
+    Health:
+      type: object
+      required: [status, ffmpeg]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        ffmpeg: { type: boolean }
