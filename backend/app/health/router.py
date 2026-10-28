@@ -20,8 +20,9 @@ class HealthResponse(BaseModel):
 
 @functools.cache
 def ffmpeg_available() -> bool:
-    """Whether both `ffmpeg` and `ffprobe` are on PATH. Checked once per process."""
-    return all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe"))
+    """Whether both `FFMPEG_PATH` and `FFPROBE_PATH` resolve to executables (names are looked
+    up on PATH). Checked once per process."""
+    return all(shutil.which(tool) for tool in (settings.ffmpeg_path, settings.ffprobe_path))
 
 
 def enough_disk_space() -> bool:

@@ -8,7 +8,7 @@ See `.env.example` for all keys.
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET_KEY = "dev-insecure-secret-key-change-me"
@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     max_file_size: int = 250 * 1024 * 1024
     max_files_per_job: int = 2
     output_retention_seconds: int = 24 * 60 * 60
+
+    # Conversion engine
+    worker_count: PositiveInt = 2  # jobs converted in parallel
+    conversion_timeout_seconds: PositiveInt = 10 * 60  # per file
+    probe_timeout_seconds: PositiveInt = 30  # ffprobe content check per file
+    cleanup_interval_seconds: PositiveInt = 10 * 60  # how often expired outputs are deleted
+    stale_upload_seconds: PositiveInt = 60 * 60  # orphaned upload dirs older than this are removed
+    max_image_pixels: PositiveInt = 100_000_000  # larger images are rejected (decompression bombs)
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
 
     # Concurrent users
     max_active_users: int = 10

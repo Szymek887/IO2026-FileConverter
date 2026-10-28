@@ -33,7 +33,21 @@ ERROR_MESSAGES: dict[str, str] = {
 
 # Message overrides for specific situations (pass as `error(..., message=...)`)
 NOT_FOUND_JOB = "Nie znaleziono zadania."
+NOT_FOUND_FILE = "Nie znaleziono pliku."
 EMAIL_SEND_FAILED = "Nie udało się wysłać kodu logowania. Spróbuj ponownie później."
+
+# CORRUPTED_FILE worded per file category (keys match `conversion.formats.Category` values)
+CORRUPTED_FILE_BY_CATEGORY: dict[str, str] = {
+    "audio": "Plik „{file}” jest uszkodzony lub nie jest prawidłowym plikiem audio.",
+    "video": "Plik „{file}” jest uszkodzony lub nie jest prawidłowym plikiem wideo.",
+    "image": "Plik „{file}” jest uszkodzony lub nie jest prawidłowym obrazem.",
+}
 
 # Success / status messages
 OTP_SENT = "Wysłaliśmy kod logowania na adres {email}."
+
+# Conversion job results (`result.message` of a job)
+CONVERSION_SUCCESS = "Konwersja zakończona pomyślnie."
+CONVERSION_FAILED = "Nie udało się przekonwertować pliku „{file}”."
+CONVERSION_TIMEOUT = "Konwersja pliku „{file}” trwała zbyt długo i została przerwana."
+JOB_INTERRUPTED = "Przetwarzanie zostało przerwane. Spróbuj ponownie."
