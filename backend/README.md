@@ -5,7 +5,13 @@ FastAPI backend of the multimedia file converter. API contract: [`../docs/api-co
 ## Requirements
 
 - [uv](https://docs.astral.sh/uv/) (installs Python 3.12 automatically)
-- FFmpeg (`brew install ffmpeg` / `apt install ffmpeg`) – needed for conversions and their tests
+- FFmpeg (`winget install Gyan.FFmpeg` / `brew install ffmpeg` / `apt install ffmpeg`) – needed for conversions and their tests. HEIC support comes from the `pillow-heif` wheel, no system packages needed.
+
+Check that your machine can do every conversion we need:
+
+```bash
+uv run python scripts/check_media_tools.py   # prints OK/FAIL per tool, exit code 1 on failure
+```
 
 ## Setup
 

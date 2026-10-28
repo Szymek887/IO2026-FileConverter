@@ -136,9 +136,22 @@ Each task = one branch + PR (`feat/b-<name>`), reviewed by Developer A.
 ### Day 1 – Wed 28.10 · Foundations (independent of A's skeleton)
 
 **B1. Tooling spike** – *do first, results reported to A for the Dockerfile*
-- [ ] `uv add pillow pillow-heif`; install FFmpeg locally (`winget install Gyan.FFmpeg` / `brew` / `apt`).
-- [ ] Verify on Windows **and** in `python:3.12-slim` + `apt install ffmpeg`: HEIC decode + **encode** with the pillow-heif wheel (no system libheif needed?), `libmp3lame` and `libx264` present in the distro FFmpeg, gif palette filter works.
-- [ ] Write findings (FFmpeg version, extra apt packages) into the PR description.
+- [x] `uv add pillow pillow-heif`; install FFmpeg locally (`winget install Gyan.FFmpeg` / `brew` / `apt`).
+- [x] Verify on Windows **and** in `python:3.12-slim` + `apt install ffmpeg`: HEIC decode + **encode** with the pillow-heif wheel (no system libheif needed?), `libmp3lame` and `libx264` present in the distro FFmpeg, gif palette filter works.
+- [x] Write findings (FFmpeg version, extra apt packages) into the PR description.
+
+Findings (28.10, re-check any time with `uv run python scripts/check_media_tools.py`):
+
+| | Windows 11 | Docker `python:3.12-slim` |
+|---|---|---|
+| Base | – | Debian 13.7 (trixie) |
+| FFmpeg | 9.0.2 (`winget install Gyan.FFmpeg`) | 7.1.5 (`apt-get install --no-install-recommends ffmpeg`) |
+| `libmp3lame`, `libx264`, `aac`, `flac`, PCM encoders | ✓ | ✓ |
+| `mov`/`mp3`/`flac`/`wav`/`gif` demuxers, `palettegen`/`paletteuse` | ✓ | ✓ |
+| Pillow 13.0.0 + pillow-heif 1.8.1 (libheif 1.23.6, x265 encoder, libde265 decoder) | ✓ | ✓ |
+| HEIC encode + decode | ✓ | ✓ – **also in a bare image without any apt packages** |
+
+→ Dockerfile needs **only** `apt-get install -y --no-install-recommends ffmpeg`; no `libheif`, no extra codecs (wheel bundles libheif + x265 + libde265). Dev/CI FFmpeg versions differ (9.x vs 7.1) – every flag used in §4 exists in both.
 
 **B2. Format registry** – `formats.py`
 - [ ] `Category` and `Format` `StrEnum`s, `CATEGORY_OF`, `EXTENSION_ALIASES`, `MIME_TYPES` (contract §5 download list), `CATEGORY_LABELS` (`Audio`, `Wideo`, `Obraz`).
@@ -255,7 +268,7 @@ from app.auth.models import User                     # FK target users.email
 ```
 - `create_app()` includes `app.conversion.router` and calls `conversion.startup(app)` / `shutdown(app)` from its lifespan.
 - **Single uvicorn worker process** (in-process queue) – already in A15.
-- Dockerfile: FFmpeg with `libmp3lame` + `libx264` (Debian's `ffmpeg` package has both); any extra packages from the B1 spike.
+- Dockerfile: `apt-get install -y --no-install-recommends ffmpeg` is enough (verified in B1: Debian's package has `libmp3lame` + `libx264`; pillow-heif needs no system packages).
 - Caddy: `max_size 520MB` and long timeouts on `/api/jobs*` – already in A16.
 - CI installs `ffmpeg` so the matrix test runs – already in A17.
 - `conftest.py`: `auth_client`, `clock`, temp `DATA_DIR`; B adds conversion fixtures in `tests/conversion/conftest.py`.
@@ -268,7 +281,7 @@ Until A's skeleton is merged, B works on pure modules (`formats.py`, `converters
 
 | Risk | Mitigation |
 |---|---|
-| HEIC encoding unavailable in the Docker image | B1 spike on Day 1; fallback: build pillow-heif against Debian `libheif-dev` + `libde265`/`x265` |
+| HEIC encoding unavailable in the Docker image | ✓ Resolved in B1: the pillow-heif wheel bundles encoder + decoder. Fallback if a future wheel drops x265: build against Debian `libheif-dev` + `libde265`/`x265` |
 | Long transcodes block the queue | 2 workers, remux instead of transcode where possible, per-file timeout, preset tuning in B18 |
 | Browser shows "network error" instead of 413 | Drain body before responding (§0); frontend also pre-validates size via `GET /api/formats` |
 | Malicious media (playlists, decompression bombs) | Forced demuxers, `-protocol_whitelist file`, `MAX_IMAGE_PIXELS`, inputs stored under UUIDs |
