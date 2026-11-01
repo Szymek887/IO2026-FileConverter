@@ -6,6 +6,7 @@ Model modules must be imported here so their tables exist before `init_db()` run
 
 from fastapi import FastAPI
 
+from app.conversion import models  # noqa: F401  (registers the tables)
 from app.conversion.router import router
 
 
