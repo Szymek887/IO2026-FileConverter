@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # (src, dst, source format, target format, timeout in seconds) -> None; raises on failure.
 Converter = Callable[[Path, Path, Format, Format, int], None]
 
-CONVERTERS: dict[Category, Converter] = {}  # video (B12) follows
+CONVERTERS: dict[Category, Converter] = {}
 
 
 class ConversionError(Exception):
@@ -62,8 +62,10 @@ def convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) 
 # Registered at the bottom: the category modules import from this package.
 from app.conversion.converters.audio import convert_audio  # noqa: E402
 from app.conversion.converters.image import convert_image  # noqa: E402
+from app.conversion.converters.video import convert_video  # noqa: E402
 
 CONVERTERS[Category.AUDIO] = convert_audio
 CONVERTERS[Category.IMAGE] = convert_image
+CONVERTERS[Category.VIDEO] = convert_video
 
 __all__ = ["CONVERTERS", "ConversionError", "Converter", "FFmpegError", "convert"]

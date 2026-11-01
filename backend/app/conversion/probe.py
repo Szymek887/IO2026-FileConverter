@@ -60,6 +60,7 @@ class MediaInfo:
     audio: AudioStream | None = None  # first audio stream
     video: VideoStream | None = None  # first real video stream (cover art excluded)
     image: ImageInfo | None = None
+    audio_codecs: tuple[str, ...] = ()  # of all audio tracks
 
 
 def probe(path: Path, fmt: Format) -> MediaInfo:
@@ -78,7 +79,8 @@ def _probe_av(path: Path, fmt: Format) -> MediaInfo:
         raise ProbeError(str(exc)) from exc
 
     streams = data.get("streams", [])
-    audio = next((_audio_stream(s) for s in streams if s.get("codec_type") == "audio"), None)
+    audio_streams = [_audio_stream(s) for s in streams if s.get("codec_type") == "audio"]
+    audio = audio_streams[0] if audio_streams else None
     video = next(
         (
             _video_stream(s)
@@ -96,7 +98,13 @@ def _probe_av(path: Path, fmt: Format) -> MediaInfo:
             raise ProbeError("audio has no duration")
     elif video is None:
         raise ProbeError("no video stream")
-    return MediaInfo(format=fmt, duration=duration, audio=audio, video=video)
+    return MediaInfo(
+        format=fmt,
+        duration=duration,
+        audio=audio,
+        video=video,
+        audio_codecs=tuple(stream.codec for stream in audio_streams),
+    )
 
 
 def _audio_stream(stream: dict[str, Any]) -> AudioStream:
