@@ -11,7 +11,17 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+from app.conversion.worker import ManualRunner
 from app.core.config import settings
+
+
+@pytest.fixture
+def app(app):
+    """The shared app, but jobs are only recorded (`app.state.job_runner.submitted`) –
+    tests run `process_job()` themselves instead of racing worker threads."""
+    app.state.job_runner = ManualRunner()
+    return app
+
 
 requires_ffmpeg = pytest.mark.skipif(
     not (shutil.which(settings.ffmpeg_path) and shutil.which(settings.ffprobe_path)),
