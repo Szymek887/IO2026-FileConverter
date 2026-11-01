@@ -187,11 +187,13 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - Benchmark: 250 MB parsed and written in ~0.35 s (~700 MB/s) – the network is the only limit.
 
 **B7. Validation & `POST /api/jobs`** – `validation.py`, `jobs.py`, `router.py`
-- [ ] Rules 5–8 from §3; probes via `run_in_threadpool`.
-- [ ] On success: insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`).
-- [ ] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
+- [x] Rules 5–8 from §3; probes via `run_in_threadpool`. Rule 7 is checked for all files before any file is probed (probing is the expensive part).
+- [x] On success: insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`). Any failure removes the job's upload dir.
+  - `worker.py` has the `JobRunner` protocol + `ManualRunner` (records IDs); `startup()` installs `ManualRunner` until B8 replaces it.
+  - `jobs.job_response()` builds the contract Job object (also for done/error jobs – reused by B11/B15).
+- [x] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
 - [x] ~~`GET /api/formats` endpoint~~ – done in B2.
-- [ ] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
+- [x] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
 
 ✅ **Milestone M1 (B part):** frontend can upload against the real backend; jobs stay `queued`.
 
