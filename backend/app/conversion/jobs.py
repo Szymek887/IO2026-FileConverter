@@ -2,16 +2,18 @@
 serialize jobs for the API."""
 
 import uuid
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.conversion import storage
 from app.conversion.formats import CATEGORY_OF, Format
-from app.conversion.models import InputFile, Job
+from app.conversion.models import InputFile, Job, JobStatus, OutputFile
 from app.conversion.schemas import InputFileInfo, JobResponse, OutputFileInfo, ResultInfo
 from app.conversion.upload import UploadResult
+from app.core.clock import now
 from app.core.errors import ErrorCode, error
-from app.core.messages import NOT_FOUND_JOB
+from app.core.messages import NOT_FOUND_FILE, NOT_FOUND_JOB
 
 
 def create_job(
@@ -49,6 +51,28 @@ def get_owned_job(db: Session, job_id: str, user_email: str) -> Job:
     if job.user_email != user_email:
         raise error(ErrorCode.FORBIDDEN)
     return job
+
+
+def get_download(job: Job, index: str) -> tuple[OutputFile, Path]:
+    """The output `index` of a job and where it is on disk. `404 NOT_FOUND` if the job isn't
+    done or has no such output, `410 FILE_EXPIRED` once the file is gone or past `expires_at`.
+
+    `index` is the raw path segment: compared as text, so anything that isn't exactly an
+    existing index (`abc`, `-1`, `01`) is simply not found.
+    """
+    result = job.result
+    output = None
+    if job.status is JobStatus.DONE and result is not None:
+        output = next((o for o in result.outputs if str(o.index) == index), None)
+    if result is None or output is None:
+        raise error(ErrorCode.NOT_FOUND, message=NOT_FOUND_FILE)
+
+    if result.purged or output.path is None or now() > result.expires_at:
+        raise error(ErrorCode.FILE_EXPIRED)
+    path = storage.to_absolute(output.path)
+    if not path.is_file():
+        raise error(ErrorCode.FILE_EXPIRED)
+    return output, path
 
 
 def download_url(job_id: str, index: int) -> str:

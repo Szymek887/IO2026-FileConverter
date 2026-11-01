@@ -10,6 +10,7 @@ database for display and download names. DB columns hold paths relative to `DATA
 import shutil
 import unicodedata
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 from app.conversion.formats import Format
 from app.core.config import settings
@@ -82,6 +83,16 @@ def display_name(raw: str) -> str:
         stem, dot, extension = name, "", ""
     stem = stem.strip() or DEFAULT_STEM
     return stem[: MAX_NAME_LENGTH - len(dot + extension)] + dot + extension
+
+
+def content_disposition(name: str) -> str:
+    """`Content-Disposition` of a download. Browsers use the UTF-8 `filename*`; `filename`
+    is an ASCII fallback for clients that don't understand it."""
+    decomposed = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+    fallback = decomposed.replace('"', "").replace("\\", "")
+    if fallback.startswith("."):  # nothing left of the stem (`日本語.jpg`)
+        fallback = DEFAULT_STEM + fallback
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
 def output_names(input_names: list[str], target: Format) -> list[str]:
