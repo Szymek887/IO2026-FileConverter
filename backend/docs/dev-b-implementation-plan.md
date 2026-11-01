@@ -207,6 +207,8 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests: lifecycle `queued → processing → done` with `ManualRunner` (conversion tests' `app` fixture pre-sets it) and a fake image converter, failing/timing-out file → `error` + message names the file + no outputs, duplicate output names, double submit, real threads (2 workers, crash survival, app start/stop), recovery on startup.
 
 **B9. Audio converters** – `converters/audio.py`: presets from §4 (bit depth / sample-rate / channel rules).
+- [x] `presets.audio_args(stream, target)` (pure, unit-tested) + `convert_audio` (probe → `run_ffmpeg`), registered as `CONVERTERS[Category.AUDIO]` at the bottom of `converters/__init__.py`. `presets.py` imports probe types only under `TYPE_CHECKING` (probe imports the converters package).
+- [x] Tests: all 6 pairs (codec, bit depth, rate, channels, duration); WAV↔FLAC bit-exact (decoded PCM MD5); 96 kHz/6 ch → 48 kHz stereo MP3; 88.2 kHz → 44.1 kHz; tags kept (Polish characters); cover art dropped; full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
 
 **B10. Image converters** – `converters/image.py`: presets from §4 (EXIF orientation, alpha flattening, ICC/EXIF carry-over, CMYK, palette and 16-bit modes).
 
