@@ -200,10 +200,11 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 ### Day 3 – Fri 30.10 · Worker, audio & image converters
 
 **B8. Worker** – `worker.py`, `conversion/__init__.py`
-- [ ] `ThreadedJobRunner(worker_count)`: `queue.Queue`, daemon threads, `stop()` puts sentinels and joins with timeout.
-- [ ] `process_job(job_id)` (own `SessionLocal`): mark `processing` + `started_at`; for each file in order: probe → `convert()` → record `OutputFile` → on first `ConversionError` stop, delete partial outputs, write `Result(status=error, message=...)`, job `error`; on success `Result(success, expires_at)`, job `done`; always delete uploads. Unexpected exceptions → same as error with the generic message + logged traceback.
-- [ ] `startup(app)`: jobs in `processing` → `error` with `JOB_INTERRUPTED` (+ delete their files); jobs in `queued` with uploads still on disk → re-submitted (else → error); start runner and cleanup loop. `shutdown(app)`: stop both.
-- [ ] Tests: lifecycle `queued → processing → done` with `ManualRunner`, failing file → `error` + message names the file + no outputs, recovery on startup, timeout path (patched `run_ffmpeg`).
+- [x] `ThreadedJobRunner(worker_count)`: `queue.Queue`, daemon threads, `stop()` puts sentinels and joins with timeout. A crash in one job never kills its thread.
+- [x] `process_job(job_id)` (own `SessionLocal`): claim with `UPDATE … WHERE status='queued'` (a job submitted twice runs once), mark `processing` + `started_at`; for each file in order: `convert()` → record `OutputFile` → on first `ConversionError` stop, delete outputs, write `Result(status=error, message=...)` (timeout → `CONVERSION_TIMEOUT`), job `error`; on success `Result(success, expires_at)`, job `done`; always delete uploads and null `InputFile.path`. Unexpected exceptions → error with the generic `INTERNAL_ERROR` message + logged traceback.
+  - **Change:** no probe in the worker – `convert()` takes no probe result (B4), converters probe themselves when their presets need it.
+- [x] `startup(app)`: `recover_jobs()` – jobs in `processing` → `error` with `JOB_INTERRUPTED` (+ delete their files); jobs in `queued` with uploads still on disk → re-submitted oldest first (else → error); start runner (a runner pre-set on `app.state` – tests – is kept). `shutdown(app)`: stop the threads. Cleanup loop is added in B14.
+- [x] Tests: lifecycle `queued → processing → done` with `ManualRunner` (conversion tests' `app` fixture pre-sets it) and a fake image converter, failing/timing-out file → `error` + message names the file + no outputs, duplicate output names, double submit, real threads (2 workers, crash survival, app start/stop), recovery on startup.
 
 **B9. Audio converters** – `converters/audio.py`: presets from §4 (bit depth / sample-rate / channel rules).
 
