@@ -123,7 +123,7 @@ On any failure the job's upload directory is removed and nothing is written to t
 | all images | `ImageOps.exif_transpose()` first (orientation tag reset to 1); first frame only for multi-image HEIC (primary image) |
 | → `png` | Lossless; keep alpha and mode where PNG supports it (CMYK/YCbCr → RGB); keep ICC + EXIF; `compress_level=6` |
 | → `jpg` | `quality=95, subsampling=0`; alpha flattened onto white; any mode → RGB; keep ICC + EXIF |
-| → `heic` | pillow-heif `quality=90`; mode → RGB/RGBA (8-bit); keep ICC + EXIF |
+| → `heic` | pillow-heif `quality=90`, grid tiles of 2048 px (large photos stay decodable); mode → RGB/RGBA (8-bit); keep ICC + EXIF |
 
 After every conversion: output must exist and be > 0 bytes, otherwise `ConversionError`. FFmpeg stderr tail goes to logs only, never to the user.
 
@@ -211,6 +211,9 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests: all 6 pairs (codec, bit depth, rate, channels, duration); WAV↔FLAC bit-exact (decoded PCM MD5); 96 kHz/6 ch → 48 kHz stereo MP3; 88.2 kHz → 44.1 kHz; tags kept (Polish characters); cover art dropped; full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
 
 **B10. Image converters** – `converters/image.py`: presets from §4 (EXIF orientation, alpha flattening, ICC/EXIF carry-over, CMYK, palette and 16-bit modes).
+- [x] `convert_image` registered as `CONVERTERS[Category.IMAGE]`; save options in `presets.image_save_options()`. ICC kept only when the colour family is unchanged (rgb→rgb, gray→gray); CMYK → sRGB via `ImageCms` with the embedded profile; 16-bit gray scaled (÷256) to 8-bit for JPG/HEIC, kept for PNG; palette transparency counts as alpha; grayscale JPG/PNG stays grayscale.
+- [x] **HEIC grid tiles (`HEIC_GRID_TILE_SIZE = 2048`)** – found while benchmarking: a single HEVC frame of a detailed 24–48 MP photo (≳18 MB) is not decodable by libde265 (our own decoder – the output would not open). Tiled like iPhone HEICs it decodes; 2048 px tiles keep the single-frame speed (512 px: ~3× slower). Worst case (48 MP noise): JPG→HEIC 25 s, HEIC→JPG 3 s, JPG→PNG 5 s.
+- [x] Tests (no FFmpeg needed): all 6 pairs, alpha flattening (exact colour), palette transparency, EXIF orientation + other tags, ICC carry-over, CMYK, 16-bit scaling, tiled HEIC, full job through the worker. Also green in `python:3.12-slim`.
 
 **B11. `GET /api/jobs/{job_id}`** – `jobs.py`, `router.py`
 - [ ] `job_id` typed `str`; malformed UUID → `404 NOT_FOUND` (not a `400` validation error). Missing → `404`, other user's → `403 FORBIDDEN`.
