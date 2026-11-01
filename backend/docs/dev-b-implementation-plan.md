@@ -114,7 +114,7 @@ On any failure the job's upload directory is removed and nothing is written to t
 |---|---|
 | → `wav` | `-map 0:a:0 -c:a pcm_s16le`; `pcm_s24le` if source bit depth > 16 (24-bit FLAC). Keep sample rate & channels |
 | → `flac` | `-map 0:a:0 -c:a flac -compression_level 8`; `-sample_fmt s16` for ≤ 16-bit or lossy sources, `-sample_fmt s32 -bits_per_raw_sample 24` above |
-| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); `-ar 48000` if source > 48 kHz; `-ac 2` if > 2 channels; `-id3v2_version 3` |
+| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); sample rate mapped to an MP3-valid one (88.2/176.4 kHz → 44.1 kHz, other > 48 kHz → 48 kHz, odd low rates → next valid); `-ac 2` if > 2 channels; `-id3v2_version 3` |
 | `mov` → `mp4` | **Remux** `-map 0:v:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and audio ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode |
 | `mp4` → `mov` | Remux `-c copy` (mov accepts everything mp4 holds); on non-zero exit → retry with full transcode |
 | Full transcode | `-c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
@@ -207,6 +207,8 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests: lifecycle `queued → processing → done` with `ManualRunner` (conversion tests' `app` fixture pre-sets it) and a fake image converter, failing/timing-out file → `error` + message names the file + no outputs, duplicate output names, double submit, real threads (2 workers, crash survival, app start/stop), recovery on startup.
 
 **B9. Audio converters** – `converters/audio.py`: presets from §4 (bit depth / sample-rate / channel rules).
+- [x] `presets.audio_args(stream, target)` (pure, unit-tested) + `convert_audio` (probe → `run_ffmpeg`), registered as `CONVERTERS[Category.AUDIO]` at the bottom of `converters/__init__.py`. `presets.py` imports probe types only under `TYPE_CHECKING` (probe imports the converters package).
+- [x] Tests: all 6 pairs (codec, bit depth, rate, channels, duration); WAV↔FLAC bit-exact (decoded PCM MD5); 96 kHz/6 ch → 48 kHz stereo MP3; 88.2 kHz → 44.1 kHz; tags kept (Polish characters); cover art dropped; full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
 
 **B10. Image converters** – `converters/image.py`: presets from §4 (EXIF orientation, alpha flattening, ICC/EXIF carry-over, CMYK, palette and 16-bit modes).
 
