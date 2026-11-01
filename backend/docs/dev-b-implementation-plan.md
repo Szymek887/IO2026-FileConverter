@@ -114,7 +114,7 @@ On any failure the job's upload directory is removed and nothing is written to t
 |---|---|
 | → `wav` | `-map 0:a:0 -c:a pcm_s16le`; `pcm_s24le` if source bit depth > 16 (24-bit FLAC). Keep sample rate & channels |
 | → `flac` | `-map 0:a:0 -c:a flac -compression_level 8`; `-sample_fmt s16` for ≤ 16-bit or lossy sources, `-sample_fmt s32 -bits_per_raw_sample 24` above |
-| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); `-ar 48000` if source > 48 kHz; `-ac 2` if > 2 channels; `-id3v2_version 3` |
+| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); sample rate mapped to an MP3-valid one (88.2/176.4 kHz → 44.1 kHz, other > 48 kHz → 48 kHz, odd low rates → next valid); `-ac 2` if > 2 channels; `-id3v2_version 3` |
 | `mov` → `mp4` | **Remux** `-map 0:v:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and audio ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode |
 | `mp4` → `mov` | Remux `-c copy` (mov accepts everything mp4 holds); on non-zero exit → retry with full transcode |
 | Full transcode | `-c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
