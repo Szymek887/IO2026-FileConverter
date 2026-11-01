@@ -174,7 +174,9 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 ### Day 2 – Thu 29.10 · Upload & validation (critical component)
 
 **B5. Models & storage** – `models.py`, `storage.py`
-- [ ] Tables from §2; `upload_dir(job_id)`, `output_dir(job_id)`, `display_name(raw)`, `output_names(inputs, target)` – stem + new extension, de-duplicated (`foto.png` + `foto.heic` → `foto.jpg`, `foto (2).jpg`).
+- [x] Tables from §2; `upload_dir(job_id)`, `output_dir(job_id)`, `display_name(raw)`, `output_names(inputs, target)` – stem + new extension, de-duplicated (`foto.png` + `foto.heic` → `foto.jpg`, `foto (2).jpg`).
+  - Enums (`JobStatus`, `ResultStatus`, `Format`, `Category`) stored as their lowercase values; `UNIQUE(job_id, position)`; FK cascades; models registered via `app/conversion/__init__.py`.
+  - `storage.py` also: `upload_path` / `output_path`, `to_relative` / `to_absolute` (DB paths relative to `DATA_DIR`, refuses `..`), `remove_uploads` / `remove_outputs`. `display_name` also strips invisible formatting characters (right-to-left override) and trailing dots; de-duplication is case-insensitive.
 
 **B6. Streaming upload** – `upload.py`
 - [ ] `async def receive_upload(request, job_id) -> UploadResult(files: list[StagedFile], target_format: str | None)`.
