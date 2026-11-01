@@ -84,3 +84,12 @@ async def post_job(
         raise
     request.app.state.job_runner.submit(job.id)
     return jobs.job_response(job)
+
+
+@router.get("/jobs/{job_id}", response_model=JobResponse)
+def get_job(job_id: str, user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> JobResponse:
+    """Job status and result. The frontend polls this every 1–2 s until `done`/`error`.
+
+    Errors: FORBIDDEN (403, another user's job), NOT_FOUND (404).
+    """
+    return jobs.job_response(jobs.get_owned_job(db, job_id, user.email))

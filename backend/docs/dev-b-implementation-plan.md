@@ -216,8 +216,9 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests (no FFmpeg needed): all 6 pairs, alpha flattening (exact colour), palette transparency, EXIF orientation + other tags, ICC carry-over, CMYK, 16-bit scaling, tiled HEIC, full job through the worker. Also green in `python:3.12-slim`.
 
 **B11. `GET /api/jobs/{job_id}`** – `jobs.py`, `router.py`
-- [ ] `job_id` typed `str`; malformed UUID → `404 NOT_FOUND` (not a `400` validation error). Missing → `404`, other user's → `403 FORBIDDEN`.
-- [ ] Serialization exactly as the contract Job object; `url = /api/jobs/{id}/files/{index}`.
+- [x] `job_id` typed `str`; malformed UUID → `404 NOT_FOUND` (not a `400` validation error). Missing → `404`, other user's → `403 FORBIDDEN`. Ownership check lives in `jobs.get_owned_job()` (reused by B13); IDs are canonicalized, so upper-case UUIDs work.
+- [x] Serialization exactly as the contract Job object; `url = /api/jobs/{id}/files/{index}`.
+- [x] Tests: queued (same body as the 202), done via the real image converter, failed, unknown/malformed ID, another user's job, no session.
 
 ### Days 4 – Sat 31.10 to Mon 02.11 · Video, downloads, retention
 
