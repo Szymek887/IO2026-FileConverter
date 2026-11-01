@@ -1,4 +1,7 @@
-"""Job service: create a job from a validated upload and serialize jobs for the API."""
+"""Job service: create a job from a validated upload, load jobs for their owner and
+serialize jobs for the API."""
+
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -7,6 +10,8 @@ from app.conversion.formats import CATEGORY_OF, Format
 from app.conversion.models import InputFile, Job
 from app.conversion.schemas import InputFileInfo, JobResponse, OutputFileInfo, ResultInfo
 from app.conversion.upload import UploadResult
+from app.core.errors import ErrorCode, error
+from app.core.messages import NOT_FOUND_JOB
 
 
 def create_job(
@@ -28,6 +33,21 @@ def create_job(
     ]
     db.add(job)
     db.commit()
+    return job
+
+
+def get_owned_job(db: Session, job_id: str, user_email: str) -> Job:
+    """The job if it belongs to the user. `404 NOT_FOUND` for unknown or malformed IDs,
+    `403 FORBIDDEN` for another user's job (as in the contract)."""
+    try:
+        canonical_id = str(uuid.UUID(job_id))
+    except ValueError:
+        raise error(ErrorCode.NOT_FOUND, message=NOT_FOUND_JOB) from None
+    job = db.get(Job, canonical_id)
+    if job is None:
+        raise error(ErrorCode.NOT_FOUND, message=NOT_FOUND_JOB)
+    if job.user_email != user_email:
+        raise error(ErrorCode.FORBIDDEN)
     return job
 
 
