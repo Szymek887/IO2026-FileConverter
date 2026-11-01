@@ -64,3 +64,27 @@ def audio_args(stream: "AudioStream", target: Format) -> list[str]:
         return args
 
     raise ValueError(f"{target} is not an audio format")
+
+
+# --- images ----------------------------------------------------------------------------
+
+PNG_COMPRESS_LEVEL = 6  # PNG is lossless at every level; 6 is the speed/size sweet spot
+JPEG_QUALITY = 95
+JPEG_SUBSAMPLING = 0  # 4:4:4 – no chroma subsampling, keeps sharp colour edges
+HEIC_QUALITY = 90
+# Large HEICs are stored as a grid of tiles (like iPhones do). A single HEVC frame of a
+# detailed 24–48 MP photo can exceed what decoders (libde265) accept – the file would not
+# open. 2048 px tiles fix that at the same encoding speed (512 px tiles: ~3x slower).
+HEIC_GRID_TILE_SIZE = 2048
+FLATTEN_BACKGROUND = (255, 255, 255)  # transparent areas become white in JPG
+
+
+def image_save_options(target: Format) -> dict[str, object]:
+    """Pillow `save()` keyword arguments for `target` (jpg, png or heic)."""
+    if target is Format.PNG:
+        return {"compress_level": PNG_COMPRESS_LEVEL}
+    if target is Format.JPG:
+        return {"quality": JPEG_QUALITY, "subsampling": JPEG_SUBSAMPLING, "optimize": True}
+    if target is Format.HEIC:
+        return {"quality": HEIC_QUALITY}
+    raise ValueError(f"{target} is not an image format")
