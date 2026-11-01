@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from app.conversion.formats import Format
 
 if TYPE_CHECKING:  # probe.py imports this package, so no runtime import from it
-    from app.conversion.probe import AudioStream
+    from app.conversion.probe import AudioStream, MediaInfo
 
 # --- audio -----------------------------------------------------------------------------
 
@@ -64,6 +64,86 @@ def audio_args(stream: "AudioStream", target: Format) -> list[str]:
         return args
 
     raise ValueError(f"{target} is not an audio format")
+
+
+# --- video -----------------------------------------------------------------------------
+
+X264_CRF = "18"  # visually lossless
+X264_PRESET = "medium"  # "slow": 2x the time, same size (B12 benchmark); don't touch the CRF
+AAC_BITRATE = "256k"
+# Codecs an .mp4 can hold; anything else in a .mov has to be converted.
+MP4_VIDEO_CODECS = frozenset({"h264", "hevc", "av1", "mpeg4"})
+MP4_AUDIO_CODECS = frozenset({"aac", "mp3", "alac", "ac3", "eac3"})
+GIF_MAX_FPS = 15.0
+GIF_MAX_WIDTH = 640
+# Long clips get smaller GIFs, otherwise the output would be enormous.
+GIF_LONG_CLIP_SECONDS = 60
+GIF_LONG_CLIP_FPS = 10.0
+GIF_LONG_CLIP_WIDTH = 480
+
+
+def _aac_args() -> list[str]:
+    return ["-c:a", "aac", "-b:a", AAC_BITRATE]
+
+
+def _container_args(target: Format) -> list[str]:
+    return ["-movflags", "+faststart"] if target is Format.MP4 else []
+
+
+def _remux_args(info: "MediaInfo", target: Format) -> list[str]:
+    """Keep the video stream as it is (no quality loss, takes seconds). Audio is converted
+    only if a track doesn't belong in `target`. Mapping streams explicitly drops data
+    tracks (iPhone), which the mp4 muxer can't write."""
+    args = ["-map", "0:V:0", "-map", "0:a?", "-map_metadata", "0", "-c:v", "copy"]
+    if info.video.codec == "hevc":
+        args += ["-tag:v", "hvc1"]  # Apple players refuse the default hev1 tag
+    if target is Format.MP4 and not MP4_AUDIO_CODECS.issuperset(info.audio_codecs):
+        args += _aac_args()
+    else:
+        args += ["-c:a", "copy"]
+    return [*args, *_container_args(target)]
+
+
+def _transcode_args(info: "MediaInfo", target: Format) -> list[str]:
+    """Re-encode to H.264/AAC. The scale filter rounds odd sizes down: yuv420p needs even
+    ones. FFmpeg applies rotation metadata on its own before the filter."""
+    args = ["-map", "0:V:0", "-map", "0:a?", "-map_metadata", "0"]
+    args += ["-c:v", "libx264", "-crf", X264_CRF, "-preset", X264_PRESET]
+    args += ["-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+    args += ["-an"] if info.format is Format.GIF else _aac_args()
+    return [*args, *_container_args(target)]
+
+
+def _gif_args(info: "MediaInfo") -> list[str]:
+    """One pass with a palette computed for this clip. Width is limited in the filter, not
+    from `info`: only there it is the width after rotation, and small clips aren't upscaled."""
+    long_clip = (info.duration or 0) > GIF_LONG_CLIP_SECONDS
+    max_fps = GIF_LONG_CLIP_FPS if long_clip else GIF_MAX_FPS
+    max_width = GIF_LONG_CLIP_WIDTH if long_clip else GIF_MAX_WIDTH
+    fps = min(info.video.fps or max_fps, max_fps)
+    graph = (
+        f"[0:V:0]fps={fps:.3f},scale='min(iw,{max_width})':-1:flags=lanczos,split[a][b];"
+        "[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a[out]"
+    )
+    return ["-filter_complex", graph, "-map", "[out]", "-loop", "0"]
+
+
+def video_plans(info: "MediaInfo", target: Format) -> list[list[str]]:
+    """FFmpeg output arguments to try in order (a later one only if the previous failed).
+
+    A remux is always followed by a transcode: probing can't foresee everything a muxer
+    refuses (e.g. Opus audio in a .mov).
+    """
+    if target is Format.GIF:
+        return [_gif_args(info)]
+    if target not in (Format.MP4, Format.MOV):
+        raise ValueError(f"{target} is not a video format")
+    transcode = _transcode_args(info, target)
+    if info.format is Format.GIF:
+        return [transcode]
+    if target is Format.MP4 and info.video.codec not in MP4_VIDEO_CODECS:
+        return [transcode]
+    return [_remux_args(info, target), transcode]
 
 
 # --- images ----------------------------------------------------------------------------

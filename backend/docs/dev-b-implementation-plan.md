@@ -115,11 +115,11 @@ On any failure the job's upload directory is removed and nothing is written to t
 | → `wav` | `-map 0:a:0 -c:a pcm_s16le`; `pcm_s24le` if source bit depth > 16 (24-bit FLAC). Keep sample rate & channels |
 | → `flac` | `-map 0:a:0 -c:a flac -compression_level 8`; `-sample_fmt s16` for ≤ 16-bit or lossy sources, `-sample_fmt s32 -bits_per_raw_sample 24` above |
 | → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); sample rate mapped to an MP3-valid one (88.2/176.4 kHz → 44.1 kHz, other > 48 kHz → 48 kHz, odd low rates → next valid); `-ac 2` if > 2 channels; `-id3v2_version 3` |
-| `mov` → `mp4` | **Remux** `-map 0:v:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and audio ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode |
-| `mp4` → `mov` | Remux `-c copy` (mov accepts everything mp4 holds); on non-zero exit → retry with full transcode |
-| Full transcode | `-c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
+| `mov` → `mp4` | **Remux** `-map 0:V:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and every audio track ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, all tracks `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode. Remux fails → retry with full transcode |
+| `mp4` → `mov` | Remux `-c copy` (hevc: `-tag:v hvc1`); on non-zero exit (e.g. Opus audio) → retry with full transcode |
+| Full transcode | `-c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
 | `gif` → `mp4`/`mov` | Full transcode video settings, `-an` |
-| → `gif` | Single pass: `fps=F,scale=W:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a`, `-loop 0`. `F = min(source fps, 15)`, `W = min(source width, 640)`; if duration > 60 s → `F = 10`, `W = min(width, 480)` (keeps output size sane) |
+| → `gif` | Single pass: `fps=F,scale='min(iw,W)':-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a`, `-loop 0`. `F = min(source fps, 15)`, `W = 640`; if duration > 60 s → `F = min(source fps, 10)`, `W = 480` (keeps output size sane) |
 | all images | `ImageOps.exif_transpose()` first (orientation tag reset to 1); first frame only for multi-image HEIC (primary image) |
 | → `png` | Lossless; keep alpha and mode where PNG supports it (CMYK/YCbCr → RGB); keep ICC + EXIF; `compress_level=6` |
 | → `jpg` | `quality=95, subsampling=0`; alpha flattened onto white; any mode → RGB; keep ICC + EXIF |
@@ -223,6 +223,21 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 ### Days 4 – Sat 31.10 to Mon 02.11 · Video, downloads, retention
 
 **B12. Video & GIF converters** – `converters/video.py`: remux decision table, remux-fail → transcode fallback, gif palette pipeline with fps/width/duration rules.
+- [x] `presets.video_plans(info, target)` (pure, unit-tested) returns the FFmpeg arguments to try in order; `convert_video` (probe → run plans) registered as `CONVERTERS[Category.VIDEO]`. All attempts share one `timeout`: the fallback gets only the remaining time, and a timed-out remux is not retried.
+- [x] **Changes vs. the original plan:** `-preset medium` instead of `slow` (benchmark below). Every remux, also `mov` → `mp4`, has the transcode fallback. `MediaInfo.audio_codecs` lists all audio tracks: the mp4 muxer accepts PCM, so a PCM second track would pass silently into the output. `0:V:0` instead of `0:v:0`, so cover art stored before the video isn't picked. `hvc1` tag also for `mp4` → `mov`. GIF width is limited inside the filter (`min(iw,W)`): that width is after rotation, so portrait clips aren't upscaled.
+- [x] Verified behaviour: stream copy keeps rotation metadata; a transcode applies it once and clears it. Data tracks are dropped, but a timecode track is rebuilt in the mp4 from metadata (harmless, kept). 10-bit HEVC remuxes as it is; transcoded to 8-bit `yuv420p` it loses HDR but doesn't fail. Transparent GIFs are flattened.
+- [x] Tests: decision table, fallback and time budget, all 6 pairs, bit-identical remux, faststart, ProRes, PCM, HEVC `hvc1`, 10-bit, Opus, two audio tracks, timecode, cover art, odd sizes, rotation, GIF rules, full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
+- Benchmark (12 CPUs, Windows, 6 FFmpeg threads per job; `testsrc2` + noise, a worst case for x264; 294 MB = 1080p30 100 s, 303 MB = 4K30 40 s):
+
+  | Conversion | 1 job | 2 parallel jobs | Output |
+  |---|---|---|---|
+  | Remux 1080p (PCM → AAC) | 4.7 s | – | 286 MB |
+  | → GIF 1080p | 19.8 s | – | 77 MB |
+  | Transcode 1080p `slow` | 367 s | 548 s | 458 MB |
+  | Transcode 1080p `medium` | 188 s | 293 s | 449 MB |
+  | Transcode 4K `medium` | – | 396 s | 525 MB |
+
+  ⚠️ For B18: the 2-vCPU host runs each job on 1 thread, not 6, so a transcode of this size may exceed `CONVERSION_TIMEOUT_SECONDS` (600 s) there. Measure on the target host; the options are a longer timeout or `-preset fast`.
 
 **B13. Downloads** – `GET /api/jobs/{job_id}/files/{index}`
 - [ ] Order of checks: job exists (`404`) → owner (`403`) → job `done` and `index` in range (`404`, "Nie znaleziono pliku.") → `now() > expires_at` or `purged` or file missing on disk (`410 FILE_EXPIRED`).
@@ -249,7 +264,7 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 
 **B18. Performance check**
 - [ ] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.
-- [ ] If a 250 MB transcode exceeds ~5 min: switch `preset slow → medium` in `presets.py` (not the CRF).
+- [ ] `preset medium` is already in use (B12). If a 250 MB transcode still exceeds ~5 min on the host: longer timeout or `preset fast` in `presets.py` (not the CRF).
 
 ### Day 6 – Wed 04.11 · Release
 - [ ] Fix bugs from joint E2E testing; smoke test one conversion per category on production; update `docs/` if anything in the contract changed.
