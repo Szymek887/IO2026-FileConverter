@@ -179,14 +179,16 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
   - `storage.py` also: `upload_path` / `output_path`, `to_relative` / `to_absolute` (DB paths relative to `DATA_DIR`, refuses `..`), `remove_uploads` / `remove_outputs`. `display_name` also strips invisible formatting characters (right-to-left override) and trailing dots; de-duplication is case-insensitive.
 
 **B6. Streaming upload** – `upload.py`
-- [ ] `async def receive_upload(request, job_id) -> UploadResult(files: list[StagedFile], target_format: str | None)`.
-- [ ] Callbacks: on part header parse `Content-Disposition` (`name`, `filename`, RFC 5987 `filename*`), apply rules 2–3 from §3, open `{file_id}.{ext}.part`; on data count bytes and apply rule 4; `target_format` buffered ≤ 32 bytes; unknown fields ignored (≤ 1 KB each).
-- [ ] Error → close/delete files, drain remaining body (cap from §0), raise `AppError`.
-- [ ] Tests (direct, with a fake `request.stream()` generator and `MAX_FILE_SIZE` overridden to 1 MB): 1 and 2 files OK, 3 files, limit + 1 byte, exactly at limit OK, empty filename part, `filename*` UTF-8 name (`zażółć.png`), missing boundary.
+- [x] `async def receive_upload(request, job_id) -> UploadResult(files: list[StagedFile], target_format: str | None)`.
+- [x] Callbacks: on part header parse `Content-Disposition` (`name`, `filename`, RFC 5987 `filename*` – handled by us, `parse_options_header` drops it), apply rules 2–3 from §3, open the file; on data count bytes and apply rule 4; `target_format` buffered ≤ 32 bytes (last value wins); unknown fields and `files` parts without a filename are ignored without being stored.
+  - **Change:** inputs are written straight to `uploads/{job_id}/{file_id}.{ext}` (no `.part` + rename) – uploads are never served, the DB row is written only after validation, and any failure removes the whole job upload dir.
+- [x] Error → close/delete files, drain remaining body (cap from §0), raise `AppError`. Also: malformed/truncated body → `VALIDATION_ERROR`; client disconnect → files removed, exception re-raised.
+- [x] Tests (fake `request.stream()` with 1-byte to 64 KB chunks, `MAX_FILE_SIZE` = 1000 B, plus real HTTP through `TestClient`): 1 and 2 files OK, 3 files, limit + 1 byte, exactly at limit OK, empty filename part, `filename*` UTF-8 name (`zażółć.png`), wrong content type, draining + cap, disconnect.
+- Benchmark: 250 MB parsed and written in ~0.35 s (~700 MB/s) – the network is the only limit.
 
 **B7. Validation & `POST /api/jobs`** – `validation.py`, `jobs.py`, `router.py`
 - [ ] Rules 5–8 from §3; probes via `run_in_threadpool`.
-- [ ] On success: rename `.part` files, insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`).
+- [ ] On success: insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`).
 - [ ] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
 - [x] ~~`GET /api/formats` endpoint~~ – done in B2.
 - [ ] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
