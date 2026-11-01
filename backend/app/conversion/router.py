@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.auth.deps import CurrentUser, get_current_user
@@ -93,3 +94,21 @@ def get_job(job_id: str, user: CurrentUser, db: Annotated[Session, Depends(get_d
     Errors: FORBIDDEN (403, another user's job), NOT_FOUND (404).
     """
     return jobs.job_response(jobs.get_owned_job(db, job_id, user.email))
+
+
+@router.get("/jobs/{job_id}/files/{index}", response_class=FileResponse)
+def download_file(
+    job_id: str, index: str, user: CurrentUser, db: Annotated[Session, Depends(get_db)]
+) -> FileResponse:
+    """Download output file `index` (0-based, order of `result.output_files`).
+
+    `index` is a `str`, so a bad one gives 404 and not a validation error. Errors: FORBIDDEN
+    (403), NOT_FOUND (404: bad id/index or job not `done`), FILE_EXPIRED (410).
+    """
+    job = jobs.get_owned_job(db, job_id, user.email)
+    output, path = jobs.get_download(job, index)
+    return FileResponse(
+        path,
+        media_type=formats.MIME_TYPES[job.target_format],
+        headers={"Content-Disposition": storage.content_disposition(output.name)},
+    )

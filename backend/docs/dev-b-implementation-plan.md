@@ -240,8 +240,9 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
   ⚠️ For B18: the 2-vCPU host runs each job on 1 thread, not 6, so a transcode of this size may exceed `CONVERSION_TIMEOUT_SECONDS` (600 s) there. Measure on the target host; the options are a longer timeout or `-preset fast`.
 
 **B13. Downloads** – `GET /api/jobs/{job_id}/files/{index}`
-- [ ] Order of checks: job exists (`404`) → owner (`403`) → job `done` and `index` in range (`404`, "Nie znaleziono pliku.") → `now() > expires_at` or `purged` or file missing on disk (`410 FILE_EXPIRED`).
-- [ ] `FileResponse` with `MIME_TYPES[target]` and `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded name>`.
+- [x] Order of checks: job exists (`404`) → owner (`403`) → job `done` and `index` in range (`404`, "Nie znaleziono pliku.") → `now() > expires_at` or `purged` or file missing on disk (`410 FILE_EXPIRED`). In `jobs.get_download()`; `index` is compared as text with the existing outputs, so `abc`, `-1`, `01` or a huge number are `404`, never a `400` validation error. A file is still available at exactly `expires_at` ("after this time", contract §5).
+- [x] `FileResponse` with `MIME_TYPES[target]` and `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded name>` (`storage.content_disposition()`). The contract shows only `filename*`; the extra fallback is compatible, browsers prefer `filename*`.
+- [x] Tests: `tests/conversion/test_downloads.py` – content and headers with the real image converter, Polish and non-Latin names, `url` from the job response works, queued/failed job, bad indexes, unknown job, another user's job, `expires_at` boundary, `purged`, file missing on disk, no session.
 
 **B14. Retention** – `cleanup.py`
 - [ ] Asyncio loop every `CLEANUP_INTERVAL_SECONDS` calling `cleanup_once()` in a thread: delete `outputs/{job_id}` where `expires_at < now()`, set `Result.purged = True`; remove upload dirs older than `STALE_UPLOAD_SECONDS` that belong to no `queued`/`processing` job (crashed uploads).
