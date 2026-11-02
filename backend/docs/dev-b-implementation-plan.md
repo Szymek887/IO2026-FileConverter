@@ -252,6 +252,8 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests with A's `clock` fixture (`tests/conversion/test_cleanup.py`): download works at `expires_at - 1`, `410` after, files gone after `cleanup_once()`; kept at exactly `expires_at`; failed jobs ignored; retry of undeletable outputs; stale vs. fresh vs. still-streaming uploads, queued jobs' uploads kept, leftovers of finished jobs removed; the loop survives errors; app start/stop.
 
 **B15. `GET /api/jobs`** *(nice-to-have)* – current user's jobs with `created_at > now - 24 h`, newest first, `{"items": [...]}`.
+- [x] `jobs.recent_jobs()`; the window is `OUTPUT_RETENTION_SECONDS`, so the list and downloads expire together. Jobs created in the same second are ordered by ID (deterministic). Items are the same Job objects as `GET /api/jobs/{id}`.
+- [x] Tests (`tests/conversion/test_list_jobs.py`): empty list, order, items equal the single-job response, 24 h boundary, other users' jobs hidden, no session.
 
 ✅ **Milestone M2 (B part):** full flow locally for all three categories: upload → poll → download.
 

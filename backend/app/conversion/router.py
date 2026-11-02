@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import CurrentUser, get_current_user
 from app.conversion import formats, jobs, storage
-from app.conversion.schemas import CategoryInfo, FormatsResponse, JobResponse
+from app.conversion.schemas import CategoryInfo, FormatsResponse, JobListResponse, JobResponse
 from app.conversion.upload import FILES_FIELD, TARGET_FIELD, receive_upload
 from app.conversion.validation import validate_upload
 from app.core.config import settings
@@ -85,6 +85,15 @@ async def post_job(
         raise
     request.app.state.job_runner.submit(job.id)
     return jobs.job_response(job)
+
+
+@router.get("/jobs", response_model=JobListResponse)
+def list_jobs(user: CurrentUser, db: Annotated[Session, Depends(get_db)]) -> JobListResponse:
+    """The current user's jobs from the last 24 h, newest first (lets the frontend restore
+    the list after a page reload)."""
+    return JobListResponse(
+        items=[jobs.job_response(job) for job in jobs.recent_jobs(db, user.email)]
+    )
 
 
 @router.get("/jobs/{job_id}", response_model=JobResponse)
