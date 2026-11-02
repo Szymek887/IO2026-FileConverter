@@ -4,6 +4,7 @@ serialize jobs for the API."""
 import uuid
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.conversion import storage
@@ -12,6 +13,7 @@ from app.conversion.models import InputFile, Job, JobStatus, OutputFile
 from app.conversion.schemas import InputFileInfo, JobResponse, OutputFileInfo, ResultInfo
 from app.conversion.upload import UploadResult
 from app.core.clock import now
+from app.core.config import settings
 from app.core.errors import ErrorCode, error
 from app.core.messages import NOT_FOUND_FILE, NOT_FOUND_JOB
 
@@ -51,6 +53,19 @@ def get_owned_job(db: Session, job_id: str, user_email: str) -> Job:
     if job.user_email != user_email:
         raise error(ErrorCode.FORBIDDEN)
     return job
+
+
+def recent_jobs(db: Session, user_email: str) -> list[Job]:
+    """The user's jobs created within `OUTPUT_RETENTION_SECONDS` (24 h), newest first –
+    older ones have nothing left to download."""
+    since = now() - settings.output_retention_seconds
+    return list(
+        db.scalars(
+            select(Job)
+            .where(Job.user_email == user_email, Job.created_at > since)
+            .order_by(Job.created_at.desc(), Job.id)
+        )
+    )
 
 
 def get_download(job: Job, index: str) -> tuple[OutputFile, Path]:

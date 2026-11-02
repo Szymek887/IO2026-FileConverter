@@ -50,3 +50,7 @@ class JobResponse(BaseModel):
     status: JobStatus
     files: list[InputFileInfo]
     result: ResultInfo | None  # None while queued/processing
+
+
+class JobListResponse(BaseModel):
+    items: list[JobResponse]  # newest first
