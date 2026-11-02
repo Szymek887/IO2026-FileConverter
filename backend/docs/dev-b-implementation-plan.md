@@ -271,8 +271,25 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [ ] Polish texts reviewed by a native speaker on the frontend team (quotation marks „…”). Self-check done: „…” used everywhere. Note: `Możesz przesłać maksymalnie {limit} pliki naraz.` is only correct for limits 2–4 (5+ would need "plików"); fine while `MAX_FILES_PER_JOB = 2` (contract).
 
 **B18. Performance check**
-- [ ] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.
-- [ ] `preset medium` is already in use (B12). If a 250 MB transcode still exceeds ~5 min on the host: longer timeout or `preset fast` in `presets.py` (not the CRF).
+- [x] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.
+  - `load_test.py generate` makes ~240 MB samples (1080p noise h264 mov with PCM / mp4, ProRes 422 mov, pink-noise FLAC); `run` gives users the scenarios round-robin, adding **ProRes → mp4** (the realistic full transcode – an h264 `mov` only remuxes).
+  - Auth: `--sessions FILE` (one session cookie per user) for the real host once A12 exists; `--user-header` for `scripts/load_test_server.py`, a **local-only** launcher that authenticates by header and serves `/load-test/stats` (peak memory from cgroup v2, peak `DATA_DIR`). `tests/conversion/test_load_test.py` runs both scripts in-process with tiny files.
+  - ⚠️ Not yet run on the target host: no Dockerfile/deployment in the repo (A15–A17), login still a stub (A12). **Run done 02.11 on a simulated host** instead: `python:3.12-slim` + FFmpeg 7.1.5, `--cpuset-cpus 0,1 --memory 4g` (no swap), app told it has 2 CPUs (→ 1 FFmpeg thread per job, as on the host).
+
+  | 10 users, 20 files, 4.7 GB at once | Result |
+  |---|---|
+  | Jobs | 10/10 done, no timeout, wall time 808 s |
+  | Upload (all at once, loopback) | 63 s per user (~75 MB/s total; on the host the network decides) |
+  | Conversion per job (2 files) | mov remux 10–16 s · flac → mp3 82 s · mp4 → gif 73–136 s · **ProRes → mp4 424–449 s** |
+  | Max queue wait | **669 s** (a 15-s remux waited behind ProRes transcodes – FIFO) |
+  | Peak memory | 1225 MiB processes (4.1 GB incl. page cache, which is reclaimable) |
+  | Peak `DATA_DIR` | 4.6 GiB (all uploads on disk at once + outputs) |
+
+- [x] `preset medium` is already in use (B12). If a 250 MB transcode still exceeds ~5 min on the host: longer timeout or `preset fast` in `presets.py` (not the CRF).
+  - **Decision: no change.** A 241 MB ProRes 422 file (12.6 s, 378 frames) transcodes in ~220 s with both workers busy – under 5 min and the 600 s timeout.
+  - ⚠️ **Risk for the team:** that is ~1.75 frames/s per job, so any transcode longer than **~35 s of 1080p** hits the 600 s timeout (`CONVERSION_TIMEOUT`). A 250 MB *ProRes Proxy* (~45 s) or old MJPEG camera clip would. Options: `CONVERSION_TIMEOUT_SECONDS=1800` (env only, longer queue waits), `X264_PRESET="veryfast"` (~3× faster, larger files at the same CRF), or accept it (the user gets the Polish timeout message). Re-measure on the real host first.
+  - Disk sizing: ~5 GB peak for 10 parallel users, plus outputs kept 24 h → plan ≥ 15 GB free for `DATA_DIR`.
+  - Queue fairness (open question 4): short jobs wait behind long transcodes; a per-user limit or a "fast lane" for remux/audio would fix it – not in scope for v1.
 
 ### Day 6 – Wed 04.11 · Release
 - [ ] Fix bugs from joint E2E testing; smoke test one conversion per category on production; update `docs/` if anything in the contract changed.
