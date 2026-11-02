@@ -260,9 +260,9 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 ### Day 5 – Tue 03.11 · Hardening & release candidate
 
 **B16. Conversion matrix test** – `test_converters.py`
-- [ ] Session-scoped fixtures generated at test time (nothing binary committed): audio via `ffmpeg -f lavfi sine` (16-bit wav, 24-bit flac, stereo mp3), video via `testsrc2` + `sine` (h264/aac mp4, mov with PCM audio, ProRes mov, 2-s gif), images via Pillow (RGBA png, JPEG with EXIF orientation 6 + ICC, HEIC).
-- [ ] All **18 pairs** parametrized: output probes as the target format, duration within ±0.2 s (audio/video), image dimensions preserved (after orientation), PNG→JPG has no alpha, WAV→FLAC is bit-exact (compare decoded PCM hash).
-- [ ] Marked `ffmpeg`; skipped with a clear reason if FFmpeg is missing (CI installs it – A17).
+- [x] Session-scoped fixtures generated at test time (nothing binary committed): audio via `ffmpeg -f lavfi sine` (16-bit wav, 24-bit flac, stereo mp3), video via `testsrc2` + `sine` (h264/aac mp4, mov with PCM audio, ProRes mov, 2-s gif), images via Pillow (RGBA png, JPEG with EXIF orientation 6 + ICC, HEIC). The shared `media` samples are reused; ProRes mov, 2-s gif and the oriented JPEG are module-scoped in `test_converters.py`.
+- [x] All **18 pairs** parametrized: output probes as the target format, duration within ±0.2 s (audio/video), image dimensions preserved (after orientation), PNG→JPG has no alpha, WAV→FLAC is bit-exact (compare decoded PCM hash). Cases come from the format registry, and `test_matrix_covers_all_18_pairs` fails if a pair is missing. `mov` runs twice (PCM → remux path, ProRes → transcode path): 20 conversions. Also checked: output codec per target and video frame size. FLAC→WAV is bit-exact too.
+- [x] Marked `ffmpeg` (`requires_ffmpeg`); skipped with a clear reason if FFmpeg is missing (CI installs it – A17). ⚠️ As of 02.11 the repo has no `.github/workflows` yet, so until A17 lands the matrix runs only locally and in the `python:3.12-slim` check.
 
 **B17. Messages & contract pass**
 - [ ] Every error from `POST /api/jobs` and downloads compared against `openapi.yaml` examples (codes, HTTP statuses, `details.file`).
