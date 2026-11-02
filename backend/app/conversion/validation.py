@@ -29,7 +29,11 @@ async def validate_upload(upload: UploadResult) -> Format:
     for staged in upload.files:
         if target is None or not can_convert(staged.format, target):
             shown = target or upload.target_format
-            raise error(ErrorCode.INVALID_TARGET, file=staged.name, target=str(shown).upper())
+            raise error(
+                ErrorCode.INVALID_TARGET,
+                file=staged.name,
+                format_args={"target": str(shown).upper()},
+            )
     assert target is not None
 
     for staged in upload.files:
