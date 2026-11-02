@@ -196,7 +196,7 @@ class _Receiver:
     def _start_file(self, filename: str) -> None:
         self._file_count += 1
         if self._file_count > settings.max_files_per_job:
-            raise error(ErrorCode.TOO_MANY_FILES, limit=settings.max_files_per_job)
+            raise error(ErrorCode.TOO_MANY_FILES, format_args={"limit": settings.max_files_per_job})
 
         display = storage.display_name(filename)
         fmt = format_from_filename(filename)
@@ -219,7 +219,7 @@ class _Receiver:
                 raise error(
                     ErrorCode.FILE_TOO_LARGE,
                     file=self._current.name,
-                    limit_mb=settings.max_file_size // (1024 * 1024),
+                    format_args={"limit_mb": settings.max_file_size // (1024 * 1024)},
                 )
             self._handle.write(data[start:end])
         elif self._kind == "target":

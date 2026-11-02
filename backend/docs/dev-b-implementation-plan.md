@@ -265,8 +265,10 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Marked `ffmpeg` (`requires_ffmpeg`); skipped with a clear reason if FFmpeg is missing (CI installs it – A17). ⚠️ As of 02.11 the repo has no `.github/workflows` yet, so until A17 lands the matrix runs only locally and in the `python:3.12-slim` check.
 
 **B17. Messages & contract pass**
-- [ ] Every error from `POST /api/jobs` and downloads compared against `openapi.yaml` examples (codes, HTTP statuses, `details.file`).
-- [ ] Polish texts reviewed by a native speaker on the frontend team (quotation marks „…”).
+- [x] Every error from `POST /api/jobs` and downloads compared against `openapi.yaml` examples (codes, HTTP statuses, `details.file`). `tests/conversion/test_contract.py` loads `openapi.yaml` and compares whole bodies with the examples (TOO_MANY_FILES, FILE_TOO_LARGE, UNSUPPORTED_FORMAT, CORRUPTED_FILE, 401, 403, 404, 410), INVALID_TARGET with the `api-contract.md` example, and checks that `details` only holds keys of the `Error` schema. Skipped where `docs/` isn't available (Docker test image).
+  - **Fixed (decision 02.11: backend follows the contract):** `details` carried template values the contract doesn't have: `TOO_MANY_FILES` `{limit}` (contract: `null`), `FILE_TOO_LARGE` `+limit_mb`, `INVALID_TARGET` `+target`. `error()` (A's `core/errors.py`) got `format_args`: values that fill the message only. Developer A's `USER_LIMIT_REACHED` still puts `{limit}` into `details`; not touched (A's endpoint).
+  - Documented variant: a bad download `index` gives `404 NOT_FOUND` with "Nie znaleziono pliku." instead of the example's "Nie znaleziono zadania." (contract §2: job / file does not exist).
+- [ ] Polish texts reviewed by a native speaker on the frontend team (quotation marks „…”). Self-check done: „…” used everywhere. Note: `Możesz przesłać maksymalnie {limit} pliki naraz.` is only correct for limits 2–4 (5+ would need "plików"); fine while `MAX_FILES_PER_JOB = 2` (contract).
 
 **B18. Performance check**
 - [ ] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.

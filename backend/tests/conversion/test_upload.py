@@ -267,6 +267,6 @@ def test_http_too_large_returns_contract_error(http):
         "status": "error",
         "code": "FILE_TOO_LARGE",
         "message": "Plik „film.mov” przekracza maksymalny rozmiar 0 MB.",
-        "details": {"file": "film.mov", "limit_mb": 0},
+        "details": {"file": "film.mov"},
     }
     assert not storage.upload_dir(JOB).exists()
