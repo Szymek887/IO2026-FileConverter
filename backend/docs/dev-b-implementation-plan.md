@@ -245,8 +245,11 @@ Findings (28.10, re-check any time with `uv run python scripts/check_media_tools
 - [x] Tests: `tests/conversion/test_downloads.py` – content and headers with the real image converter, Polish and non-Latin names, `url` from the job response works, queued/failed job, bad indexes, unknown job, another user's job, `expires_at` boundary, `purged`, file missing on disk, no session.
 
 **B14. Retention** – `cleanup.py`
-- [ ] Asyncio loop every `CLEANUP_INTERVAL_SECONDS` calling `cleanup_once()` in a thread: delete `outputs/{job_id}` where `expires_at < now()`, set `Result.purged = True`; remove upload dirs older than `STALE_UPLOAD_SECONDS` that belong to no `queued`/`processing` job (crashed uploads).
-- [ ] Tests with A's `clock` fixture: download works at `expires_at - 1`, `410` after, files gone after `cleanup_once()`.
+- [x] Asyncio loop every `CLEANUP_INTERVAL_SECONDS` calling `cleanup_once()` in a thread: delete `outputs/{job_id}` where `expires_at < now()`, set `Result.purged = True`; remove upload dirs older than `STALE_UPLOAD_SECONDS` that belong to no `queued`/`processing` job (crashed uploads).
+  - `startup()` creates the task (`app.state.cleanup_task`), `shutdown()` cancels it. The loop sleeps first, so app start (and every test client) doesn't run a cleanup; an exception is logged and the next run retries.
+  - Purged results keep their rows (job history, `GET /api/jobs/{id}` still shows `done`); output paths are set to `NULL`. An output dir that can't be deleted (a file still open on Windows) is not marked purged, so the next run retries.
+  - "Older than" for uploads = newest mtime of the dir **and its files**: an upload in progress has no job row yet, but its file's mtime grows while it streams.
+- [x] Tests with A's `clock` fixture (`tests/conversion/test_cleanup.py`): download works at `expires_at - 1`, `410` after, files gone after `cleanup_once()`; kept at exactly `expires_at`; failed jobs ignored; retry of undeletable outputs; stale vs. fresh vs. still-streaming uploads, queued jobs' uploads kept, leftovers of finished jobs removed; the loop survives errors; app start/stop.
 
 **B15. `GET /api/jobs`** *(nice-to-have)* – current user's jobs with `created_at > now - 24 h`, newest first, `{"items": [...]}`.
 
