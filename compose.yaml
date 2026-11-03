@@ -1,0 +1,69 @@
+# Konwuś – production stack behind an existing Traefik.
+#
+#   cp .env.example .env   # fill in DOMAIN, SECRET_KEY, SMTP_*, Traefik names
+#   docker compose up -d --build
+#
+# Traefik routes https://$DOMAIN/api/* to the backend and everything else to the frontend.
+# Both are on one origin, which the session cookie requires. See docs/deployment.md.
+
+name: konwus
+
+x-traefik-tls: &traefik-tls
+  traefik.enable: "true"
+  traefik.docker.network: ${TRAEFIK_NETWORK:-traefik}
+
+services:
+  backend:
+    build: ./backend
+    image: konwus-backend
+    restart: unless-stopped
+    # One process only: jobs run in its thread pool, the database is SQLite in /data.
+    # Never scale this service.
+    stop_grace_period: 40s
+    environment:
+      ENV: prod
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env}
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: '["https://${DOMAIN:?set DOMAIN in .env}"]'
+      EMAIL_BACKEND: smtp
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+      ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:-[]}
+      MAX_ACTIVE_USERS: ${MAX_ACTIVE_USERS:-10}
+      WORKER_COUNT: ${WORKER_COUNT:-2}
+    volumes:
+      - data:/data
+    networks:
+      - traefik
+    labels:
+      <<: *traefik-tls
+      traefik.http.routers.konwus-api.rule: Host(`${DOMAIN}`) && PathPrefix(`/api`)
+      traefik.http.routers.konwus-api.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.konwus-api.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.konwus-api.loadbalancer.server.port: "8000"
+
+  frontend:
+    build: ./frontend
+    image: konwus-frontend
+    restart: unless-stopped
+    networks:
+      - traefik
+    labels:
+      <<: *traefik-tls
+      traefik.http.routers.konwus-web.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.konwus-web.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.konwus-web.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.services.konwus-web.loadbalancer.server.port: "8080"
+
+volumes:
+  # Uploads, converted files and the SQLite database.
+  data:
+
+networks:
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK:-traefik}
