@@ -1370,3 +1370,35 @@ select {
     display: none;
   }
 }
+
+/* Keyboard users can jump past the header; visible only when focused. */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--pink);
+  font-weight: 700;
+  transform: translateY(-150%);
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.main:focus {
+  outline: none;
+}
+
+/* Only in `npm run dev:mock`, so nobody mistakes the mock for the real backend. */
+.mock-banner {
+  margin: 0;
+  padding: 8px 16px;
+  background: var(--teal);
+  color: var(--cream);
+  font-size: 0.85rem;
+  text-align: center;
+}

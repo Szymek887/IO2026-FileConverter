@@ -6,12 +6,21 @@ import type {
   RequestOtpResponse,
   SessionInfo,
 } from './types'
+import { config } from '../config'
 
 /** Base path of the API. Same origin in production, proxied by Vite in development. */
 export const API_BASE = '/api'
 
 const GENERIC_ERROR = 'Wystąpił nieoczekiwany błąd serwera.'
 const NETWORK_ERROR = 'Brak połączenia z serwerem. Sprawdź internet i spróbuj ponownie.'
+const TIMEOUT_ERROR = 'Serwer nie odpowiedział na czas. Spróbuj ponownie.'
+
+/**
+ * Dispatched on `window` whenever any API call returns `401 UNAUTHENTICATED`, so the app can go
+ * back to the login screen from anywhere. Other 401 codes (`INVALID_OTP`, `OTP_EXPIRED`) do not
+ * end the session and do not trigger it.
+ */
+export const SESSION_EXPIRED_EVENT = 'konwus:session-expired'
 
 /** A non-2xx API response (or a network failure, `code = "NETWORK_ERROR"`). */
 export class ApiError extends Error {
@@ -38,8 +47,11 @@ function isErrorBody(value: unknown): value is ApiErrorBody {
 }
 
 function errorFromBody(status: number, body: unknown): ApiError {
-  if (isErrorBody(body)) return new ApiError(status, body.code, body.message, body.details)
-  return new ApiError(status, 'INTERNAL_ERROR', GENERIC_ERROR)
+  if (!isErrorBody(body)) return new ApiError(status, 'INTERNAL_ERROR', GENERIC_ERROR)
+  if (status === 401 && body.code === 'UNAUTHENTICATED') {
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: body.message }))
+  }
+  return new ApiError(status, body.code, body.message, body.details)
 }
 
 async function parseJson(response: Response): Promise<unknown> {
@@ -52,16 +64,27 @@ async function parseJson(response: Response): Promise<unknown> {
   }
 }
 
+/**
+ * JSON request with a timeout (`config.requestTimeoutMs`), so a hung backend shows an error
+ * instead of an endless spinner. Uploads and downloads have their own functions without it,
+ * because large files legitimately take long.
+ */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), config.requestTimeoutMs)
   let response: Response
   try {
     response = await fetch(`${API_BASE}${path}`, {
       credentials: 'include',
       ...init,
       headers: { Accept: 'application/json', ...init.headers },
+      signal: controller.signal,
     })
   } catch {
+    if (controller.signal.aborted) throw new ApiError(0, 'REQUEST_TIMEOUT', TIMEOUT_ERROR)
     throw new ApiError(0, 'NETWORK_ERROR', NETWORK_ERROR)
+  } finally {
+    clearTimeout(timer) // the timeout covers waiting for the server, not reading the small JSON body
   }
   const body = await parseJson(response)
   if (!response.ok) throw errorFromBody(response.status, body)

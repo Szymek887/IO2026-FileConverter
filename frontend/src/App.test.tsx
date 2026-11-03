@@ -170,3 +170,27 @@ describe('konwersja', () => {
     expect(screen.getByLabelText('Adres e-mail')).toBeInTheDocument()
   })
 })
+
+describe('połączenie i sesja', () => {
+  it('pokazuje brak połączenia z backendem i pozwala spróbować ponownie', async () => {
+    server.use(http.get('*/api/auth/me', () => HttpResponse.error(), { once: true }))
+    const u = user()
+    render(<App />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Brak połączenia z serwerem.')
+    await u.click(screen.getByRole('button', { name: 'Spróbuj ponownie' }))
+    expect(await screen.findByLabelText('Adres e-mail')).toBeInTheDocument()
+  })
+
+  it('wylogowuje po upływie session_expires', async () => {
+    server.resetHandlers(...fastHandlers('jan@example.com'))
+    server.use(
+      http.get('*/api/auth/me', () =>
+        HttpResponse.json({ email: 'jan@example.com', session_expires: Math.floor(Date.now() / 1000) + 1 }),
+      ),
+    )
+    render(<App />)
+    expect(await screen.findByRole('button', { name: 'KONWERTUJ' })).toBeInTheDocument()
+    expect(await screen.findByText('Sesja wygasła. Zaloguj się ponownie.', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(screen.getByLabelText('Adres e-mail')).toBeInTheDocument()
+  })
+})

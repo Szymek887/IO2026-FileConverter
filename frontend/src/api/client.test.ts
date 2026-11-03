@@ -1,7 +1,8 @@
-import { http, HttpResponse } from 'msw'
-import { describe, expect, it } from 'vitest'
+import { delay, http, HttpResponse } from 'msw'
+import { describe, expect, it, vi } from 'vitest'
+import { config } from '../config'
 import { fastHandlers, server, testFile } from '../test/setup'
-import { ApiError, createJob, getFormats, getMe, requestOtp, verifyOtp } from './client'
+import { ApiError, createJob, getFormats, getMe, requestOtp, SESSION_EXPIRED_EVENT, verifyOtp } from './client'
 
 describe('API client', () => {
   it('maps the contract error body to ApiError', async () => {
@@ -52,5 +53,29 @@ describe('API client', () => {
       code: 'INVALID_TARGET',
       message: 'Nie można przekonwertować pliku „glos.wav” do formatu PNG.',
     })
+  })
+
+  it('gives up on a hung server with REQUEST_TIMEOUT', async () => {
+    const previous = config.requestTimeoutMs
+    config.requestTimeoutMs = 50
+    try {
+      server.use(http.get('*/api/formats', () => delay('infinite')))
+      await expect(getFormats()).rejects.toMatchObject({ code: 'REQUEST_TIMEOUT' })
+    } finally {
+      config.requestTimeoutMs = previous
+    }
+  })
+
+  it('signals session expiry only for UNAUTHENTICATED, not for a wrong OTP', async () => {
+    const expired = vi.fn()
+    window.addEventListener(SESSION_EXPIRED_EVENT, expired)
+    try {
+      await verifyOtp('jan@example.com', '000000').catch(() => {})
+      expect(expired).not.toHaveBeenCalled()
+      await getMe().catch(() => {})
+      expect(expired).toHaveBeenCalledOnce()
+    } finally {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, expired)
+    }
   })
 })
