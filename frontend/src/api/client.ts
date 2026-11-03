@@ -47,7 +47,11 @@ function isErrorBody(value: unknown): value is ApiErrorBody {
 }
 
 function errorFromBody(status: number, body: unknown): ApiError {
-  if (!isErrorBody(body)) return new ApiError(status, 'INTERNAL_ERROR', GENERIC_ERROR)
+  if (!isErrorBody(body)) {
+    // The backend always answers with a contract error body, so a bare 5xx comes from a proxy in
+    // front of it (Vite in dev, the reverse proxy in production) that cannot reach it.
+    return new ApiError(status, 'INTERNAL_ERROR', status >= 500 ? NETWORK_ERROR : GENERIC_ERROR)
+  }
   if (status === 401 && body.code === 'UNAUTHENTICATED') {
     window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT, { detail: body.message }))
   }

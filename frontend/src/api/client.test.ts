@@ -13,7 +13,7 @@ describe('API client', () => {
 
   it('falls back to a generic Polish message for a non-JSON error', async () => {
     server.use(http.get('*/api/formats', () => new HttpResponse('Bad gateway', { status: 502 })))
-    await expect(getFormats()).rejects.toMatchObject({ status: 502, code: 'INTERNAL_ERROR' })
+    await expect(getFormats()).rejects.toMatchObject({ status: 502, code: 'INTERNAL_ERROR', message: expect.stringMatching(/^Brak połączenia/) })
   })
 
   it('reports network failures as NETWORK_ERROR', async () => {

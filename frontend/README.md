@@ -23,7 +23,7 @@ cd frontend && npm run dev                              # :5173, /api -> :8000 (
 
 - Proxy z `vite.config.ts` przekazuje `/api` do `http://localhost:8000` (inny adres: zmienna `API_PROXY_TARGET`). Frontend i API są na tym samym originie, więc ciasteczko `session` działa bez CORS.
 - Do pracy po `http://` ustaw w `backend/.env` `COOKIE_SECURE=false` (Safari odrzuca ciasteczka `Secure` na localhost).
-- **Stan na 03.11.2026:** endpointy `/api/auth/*` nie są jeszcze zaimplementowane w backendzie (`get_current_user` to stub zwracający 401), więc z prawdziwym backendem przejdziesz tylko do ekranu logowania. Do tego czasu używaj `npm run dev:mock`.
+- Z `EMAIL_BACKEND=console` (domyślnie w dev) kod logowania nie jest wysyłany e-mailem, tylko wypisywany w logu backendu: `Login code for <e-mail>: 123456`.
 
 ## Skrypty
 
