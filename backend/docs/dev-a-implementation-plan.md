@@ -128,11 +128,11 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] Selected by `EMAIL_BACKEND`; injectable dependency `get_email_sender` – tests use the `outbox` fixture to capture sent codes.
 
 **A10. `POST /api/auth/request-otp`** – `auth/otp.py`, `auth/router.py`
-- [ ] Normalize email (`strip().lower()`), validate with `email-validator` (no DNS check) → `400 INVALID_EMAIL`. Email field typed `str` in schema so we return our own code instead of a generic validation error.
-- [ ] Optional domain allow-list → `INVALID_EMAIL`.
-- [ ] Rate limit: `now - otp_sent_at < OTP_RESEND_SECONDS` → `429 OTP_RATE_LIMITED`, `details.retry_after_seconds`.
-- [ ] Upsert user, store hash/expiry, reset attempts, send e-mail; on send failure clear OTP and return `500 INTERNAL_ERROR` ("Nie udało się wysłać kodu. Spróbuj ponownie później.").
-- [ ] `202` per contract (`otp_expires`, `resend_available_in`).
+- [x] Normalize email (`strip().lower()`), validate with `email-validator` (no DNS check) → `400 INVALID_EMAIL`. Email field typed `str` in schema so we return our own code instead of a generic validation error.
+- [x] Optional domain allow-list → `INVALID_EMAIL`.
+- [x] Rate limit: `now - otp_sent_at < OTP_RESEND_SECONDS` → `429 OTP_RATE_LIMITED`, `details.retry_after_seconds`.
+- [x] Upsert user, store hash/expiry, reset attempts, send e-mail; on send failure clear OTP and return `500 INTERNAL_ERROR` (`messages.EMAIL_SEND_FAILED`).
+- [x] `202` per contract (`otp_expires`, `resend_available_in`).
 
 **A11. `POST /api/auth/verify-otp`**
 - [ ] `code` must match `^\d{6}$` → else `400 VALIDATION_ERROR`.
