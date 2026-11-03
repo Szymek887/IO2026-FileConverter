@@ -1,0 +1,3 @@
+# Deployment secrets (compose.yaml reads them); see .env.example
+.env
+.DS_Store
