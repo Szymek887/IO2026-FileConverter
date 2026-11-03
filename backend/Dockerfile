@@ -17,6 +17,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 COPY app ./app
 COPY scripts/check_media_tools.py scripts/docker_healthcheck.py ./scripts/
+# COPY keeps the modes of the checkout; with a strict umask (e.g. 077) the files would be
+# unreadable for the unprivileged runtime user. Make them world-readable explicitly.
+RUN chmod -R a+rX /app/app /app/scripts
 
 # --- Runtime -------------------------------------------------------------------------------
 FROM python:3.12-slim-trixie

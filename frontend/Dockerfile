@@ -7,10 +7,12 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 # The MSW worker is only used by `npm run dev:mock`; keep it out of production.
-RUN npm run build && rm -f dist/mockServiceWorker.js
+# chmod: files from public/ keep the checkout's modes, which may be unreadable for nginx's
+# unprivileged user when the repo was cloned with a strict umask.
+RUN npm run build && rm -f dist/mockServiceWorker.js && chmod -R a+rX dist
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --chmod=644 nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
