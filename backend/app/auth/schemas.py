@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class RequestOtpRequest(BaseModel):
@@ -14,3 +14,13 @@ class RequestOtpResponse(BaseModel):
     message: str
     otp_expires: int
     resend_available_in: int
+
+
+class VerifyOtpRequest(BaseModel):
+    email: str
+    code: str = Field(pattern=r"^[0-9]{6}$")
+
+
+class SessionInfo(BaseModel):
+    email: str
+    session_expires: int
