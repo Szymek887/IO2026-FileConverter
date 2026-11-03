@@ -128,39 +128,39 @@ Each task = one branch + PR (`feat/a-<name>`), reviewed by Developer B.
 - [x] Selected by `EMAIL_BACKEND`; injectable dependency `get_email_sender` – tests use the `outbox` fixture to capture sent codes.
 
 **A10. `POST /api/auth/request-otp`** – `auth/otp.py`, `auth/router.py`
-- [ ] Normalize email (`strip().lower()`), validate with `email-validator` (no DNS check) → `400 INVALID_EMAIL`. Email field typed `str` in schema so we return our own code instead of a generic validation error.
-- [ ] Optional domain allow-list → `INVALID_EMAIL`.
-- [ ] Rate limit: `now - otp_sent_at < OTP_RESEND_SECONDS` → `429 OTP_RATE_LIMITED`, `details.retry_after_seconds`.
-- [ ] Upsert user, store hash/expiry, reset attempts, send e-mail; on send failure clear OTP and return `500 INTERNAL_ERROR` ("Nie udało się wysłać kodu. Spróbuj ponownie później.").
-- [ ] `202` per contract (`otp_expires`, `resend_available_in`).
+- [x] Normalize email (`strip().lower()`), validate with `email-validator` (no DNS check) → `400 INVALID_EMAIL`. Email field typed `str` in schema so we return our own code instead of a generic validation error.
+- [x] Optional domain allow-list → `INVALID_EMAIL`.
+- [x] Rate limit: `now - otp_sent_at < OTP_RESEND_SECONDS` → `429 OTP_RATE_LIMITED`, `details.retry_after_seconds`.
+- [x] Upsert user, store hash/expiry, reset attempts, send e-mail; on send failure clear OTP and return `500 INTERNAL_ERROR` (`messages.EMAIL_SEND_FAILED`).
+- [x] `202` per contract (`otp_expires`, `resend_available_in`).
 
 **A11. `POST /api/auth/verify-otp`**
-- [ ] `code` must match `^\d{6}$` → else `400 VALIDATION_ERROR`.
-- [ ] Unknown user / no OTP / expired → `401 OTP_EXPIRED`.
-- [ ] `otp_attempts >= OTP_MAX_ATTEMPTS` → `429 TOO_MANY_ATTEMPTS` (and OTP invalidated).
-- [ ] Wrong code → increment attempts → `401 INVALID_OTP` (5th wrong attempt → `429` and invalidate).
-- [ ] Correct → check user limit (A13) → clear OTP (single use) → create session (A12) → set cookie → `200 {email, session_expires}`.
+- [x] `code` must match `^\d{6}$` → else `400 VALIDATION_ERROR`.
+- [x] Unknown user / no OTP / expired → `401 OTP_EXPIRED`. A locked or used code also gives `OTP_EXPIRED`; the 60 s resend limit stays in force after a lockout.
+- [x] `otp_attempts >= OTP_MAX_ATTEMPTS` → `429 TOO_MANY_ATTEMPTS` (and OTP invalidated).
+- [x] Wrong code → increment attempts → `401 INVALID_OTP` (5th wrong attempt → `429` and invalidate).
+- [x] Correct → check user limit (A13) → clear OTP (single use) → create session (A12) → set cookie → `200 {email, session_expires}`.
 
 ### Day 3 – Fri 30.10 · Sessions & user limit
 
 **A12. Sessions** – `auth/sessions.py`, `auth/deps.py`
-- [ ] `create_session(user)`: new token, store hash, `session_expires = now + TTL`, `last_seen = now`.
-- [ ] Cookie: `session`, `HttpOnly`, `Secure=COOKIE_SECURE`, `SameSite=Lax`, `Path=/`, `Max-Age=TTL`.
-- [ ] `get_current_user`: read cookie → lookup by hash → missing/expired → `401 UNAUTHENTICATED`. Sliding expiry: update `last_seen` and extend `session_expires` at most once per 60 s (avoid a DB write per poll request).
-- [ ] `POST /api/auth/logout` → clear hash in DB, delete cookie, `204`, idempotent (works without valid session).
-- [ ] `GET /api/auth/me` → `{email, session_expires}`.
+- [x] `create_session(user)`: new token, store hash, `session_expires = now + TTL`, `last_seen = now`.
+- [x] Cookie: `session`, `HttpOnly`, `Secure=COOKIE_SECURE`, `SameSite=Lax`, `Path=/`, `Max-Age=TTL`.
+- [x] `get_current_user`: read cookie → lookup by hash → missing/expired → `401 UNAUTHENTICATED`. Sliding expiry: update `last_seen` and extend `session_expires` at most once per 60 s (avoid a DB write per poll request).
+- [x] `POST /api/auth/logout` → clear hash in DB, delete cookie, `204`, idempotent (works without valid session).
+- [x] `GET /api/auth/me` → `{email, session_expires}`.
 
 **A13. Concurrent user limit**
-- [ ] Active user = `session_expires > now AND last_seen > now - ACTIVE_WINDOW_SECONDS`.
-- [ ] On verify: if the logging-in user is **not** already active and active count ≥ `MAX_ACTIVE_USERS` → `503 USER_LIMIT_REACHED`. Check is done after OTP is verified but before it is consumed, so the user can retry with the same code.
-- [ ] Logout frees the slot immediately.
+- [x] Active user = `session_expires > now AND last_seen > now - ACTIVE_WINDOW_SECONDS`.
+- [x] On verify: if the logging-in user is **not** already active and active count ≥ `MAX_ACTIVE_USERS` → `503 USER_LIMIT_REACHED`. Check is done after OTP is verified but before it is consumed, so the user can retry with the same code.
+- [x] Logout frees the slot immediately.
 
 **A14. Auth tests** – `tests/auth/`
-- [ ] request-otp: valid → code captured by fake sender; invalid email; resend < 60 s → 429 with `retry_after_seconds`; resend after 60 s OK and old code invalid.
-- [ ] verify: correct; wrong; expired (advance clock 601 s); reused; 5 wrong → 429 then correct code still rejected.
-- [ ] session: `/me` with/without cookie, expiry after TTL, sliding refresh, logout + reuse of old cookie → 401, second login invalidates first session.
-- [ ] user limit: 10 active → 11th gets 503; one inactive for 15 min → 11th succeeds; active user re-login allowed.
-- [ ] error shape: unknown route → `NOT_FOUND` JSON; malformed JSON → `VALIDATION_ERROR`.
+- [x] request-otp: valid → code captured by fake sender; invalid email; resend < 60 s → 429 with `retry_after_seconds`; resend after 60 s OK and old code invalid.
+- [x] verify: correct; wrong; expired (advance clock 601 s); reused; 5 wrong → 429 then correct code still rejected.
+- [x] session: `/me` with/without cookie, expiry after TTL, sliding refresh, logout + reuse of old cookie → 401, second login invalidates first session.
+- [x] user limit: 10 active → 11th gets 503; one inactive for 15 min → 11th succeeds; active user re-login allowed.
+- [x] error shape: unknown route → `NOT_FOUND` JSON; malformed JSON → `VALIDATION_ERROR`.
 
 ✅ **Milestone M2 (auth part):** real auth works end-to-end locally (frontend can switch from Prism mock to backend for login).
 
