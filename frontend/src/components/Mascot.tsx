@@ -127,10 +127,11 @@ function usePupilTracking() {
   useEffect(() => {
     const root = ref.current
     if (!root) return
-    let frame = 0
-    let last: PointerEvent | null = null
+    // Mutable per-effect state, kept in an object so no captured variable is reassigned.
+    const pointer: { last: PointerEvent | null; frame: number } = { last: null, frame: 0 }
     const update = () => {
-      frame = 0
+      pointer.frame = 0
+      const last = pointer.last
       if (!last) return
       for (const eye of root.querySelectorAll<HTMLElement>('.eye')) {
         const rect = eye.getBoundingClientRect()
@@ -143,13 +144,13 @@ function usePupilTracking() {
       }
     }
     const onMove = (event: PointerEvent) => {
-      last = event
-      if (!frame) frame = requestAnimationFrame(update)
+      pointer.last = event
+      if (!pointer.frame) pointer.frame = requestAnimationFrame(update)
     }
     window.addEventListener('pointermove', onMove)
     return () => {
       window.removeEventListener('pointermove', onMove)
-      if (frame) cancelAnimationFrame(frame)
+      if (pointer.frame) cancelAnimationFrame(pointer.frame)
     }
   }, [])
   return ref

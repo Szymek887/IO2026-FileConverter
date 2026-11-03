@@ -20,19 +20,23 @@ export function ConverterScreen({ onUnauthenticated }: ConverterScreenProps) {
   const [files, setFiles] = useState<SelectedFile[]>([])
   const conversion = useConversion(onUnauthenticated)
 
-  const loadFormats = useCallback(async () => {
-    setFormatsError(null)
-    try {
-      setFormats(await getFormats())
-    } catch (e) {
-      if (e instanceof ApiError && e.code === 'UNAUTHENTICATED') return onUnauthenticated(e.message)
-      setFormatsError(e instanceof ApiError ? e.message : 'Nie udało się pobrać listy formatów.')
-    }
-  }, [onUnauthenticated])
+  const loadFormats = useCallback(
+    () =>
+      getFormats().then(setFormats, (e: unknown) => {
+        if (e instanceof ApiError && e.code === 'UNAUTHENTICATED') return onUnauthenticated(e.message)
+        setFormatsError(e instanceof ApiError ? e.message : 'Nie udało się pobrać listy formatów.')
+      }),
+    [onUnauthenticated],
+  )
 
   useEffect(() => {
     void loadFormats()
   }, [loadFormats])
+
+  const retryFormats = () => {
+    setFormatsError(null)
+    void loadFormats()
+  }
 
   const convert = () => {
     conversion.start(files)
@@ -48,7 +52,7 @@ export function ConverterScreen({ onUnauthenticated }: ConverterScreenProps) {
   return (
     <div className="stage" key={stage}>
       {stage === 'home' && (
-        <HomeStage onStart={() => setStage('pick')} loading={!formats} error={formatsError} onRetry={loadFormats} />
+        <HomeStage onStart={() => setStage('pick')} loading={!formats} error={formatsError} onRetry={retryFormats} />
       )}
       {stage === 'pick' && formats && (
         <PickStage formats={formats} files={files} onFilesChange={setFiles} onConvert={convert} />
