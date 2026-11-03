@@ -8,7 +8,7 @@ See `.env.example` for all keys.
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_SECRET_KEY = "dev-insecure-secret-key-change-me"
@@ -24,11 +24,22 @@ class Settings(BaseSettings):
     # Storage
     data_dir: Path = Path("./data")
     database_url: str = ""  # empty -> SQLite file inside data_dir
+    min_free_disk_bytes: int = 1024**3  # /api/health reports "degraded" below this
 
     # Upload / conversion limits
     max_file_size: int = 250 * 1024 * 1024
     max_files_per_job: int = 2
     output_retention_seconds: int = 24 * 60 * 60
+
+    # Conversion engine
+    worker_count: PositiveInt = 2  # jobs converted in parallel
+    conversion_timeout_seconds: PositiveInt = 10 * 60  # per file
+    probe_timeout_seconds: PositiveInt = 30  # ffprobe content check per file
+    cleanup_interval_seconds: PositiveInt = 10 * 60  # how often expired outputs are deleted
+    stale_upload_seconds: PositiveInt = 60 * 60  # orphaned upload dirs older than this are removed
+    max_image_pixels: PositiveInt = 100_000_000  # larger images are rejected (decompression bombs)
+    ffmpeg_path: str = "ffmpeg"
+    ffprobe_path: str = "ffprobe"
 
     # Concurrent users
     max_active_users: int = 10
@@ -53,12 +64,13 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    # starttls: port 587 · tls: implicit TLS, port 465 · none: local test servers only
+    smtp_tls: Literal["starttls", "tls", "none"] = "starttls"
+    smtp_timeout_seconds: int = 10
     allowed_email_domains: list[str] = []  # empty -> any domain
 
     @model_validator(mode="after")
     def _fill_defaults_and_validate(self) -> "Settings":
-        if not self.database_url:
-            self.database_url = f"sqlite:///{self.data_dir / 'app.db'}"
         self.allowed_email_domains = [d.strip().lower() for d in self.allowed_email_domains]
 
         if self.email_backend == "smtp" and not (self.smtp_host and self.smtp_from):
@@ -75,6 +87,8 @@ class Settings(BaseSettings):
                 )
             if self.email_backend == "console":
                 raise ValueError("ENV=prod requires EMAIL_BACKEND=smtp")
+            if self.smtp_tls == "none":
+                raise ValueError("ENV=prod requires SMTP_TLS=starttls or tls")
             if not self.cookie_secure:
                 raise ValueError("ENV=prod requires COOKIE_SECURE=true")
         return self

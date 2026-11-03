@@ -114,16 +114,16 @@ On any failure the job's upload directory is removed and nothing is written to t
 |---|---|
 | → `wav` | `-map 0:a:0 -c:a pcm_s16le`; `pcm_s24le` if source bit depth > 16 (24-bit FLAC). Keep sample rate & channels |
 | → `flac` | `-map 0:a:0 -c:a flac -compression_level 8`; `-sample_fmt s16` for ≤ 16-bit or lossy sources, `-sample_fmt s32 -bits_per_raw_sample 24` above |
-| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); `-ar 48000` if source > 48 kHz; `-ac 2` if > 2 channels; `-id3v2_version 3` |
-| `mov` → `mp4` | **Remux** `-map 0:v:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and audio ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode |
-| `mp4` → `mov` | Remux `-c copy` (mov accepts everything mp4 holds); on non-zero exit → retry with full transcode |
-| Full transcode | `-c:v libx264 -crf 18 -preset slow -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
+| → `mp3` | `-map 0:a:0 -c:a libmp3lame -q:a 0` (VBR V0); sample rate mapped to an MP3-valid one (88.2/176.4 kHz → 44.1 kHz, other > 48 kHz → 48 kHz, odd low rates → next valid); `-ac 2` if > 2 channels; `-id3v2_version 3` |
+| `mov` → `mp4` | **Remux** `-map 0:V:0 -map 0:a? -c copy -movflags +faststart` if video ∈ {h264, hevc, av1, mpeg4} (hevc: `-tag:v hvc1`) and every audio track ∈ {aac, mp3, alac, ac3, eac3}. Incompatible audio only (e.g. PCM) → copy video, all tracks `-c:a aac -b:a 256k`. Incompatible video (e.g. ProRes) → full transcode. Remux fails → retry with full transcode |
+| `mp4` → `mov` | Remux `-c copy` (hevc: `-tag:v hvc1`); on non-zero exit (e.g. Opus audio) → retry with full transcode |
+| Full transcode | `-c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p -vf scale=trunc(iw/2)*2:trunc(ih/2)*2` + `-c:a aac -b:a 256k`; `+faststart` for mp4 |
 | `gif` → `mp4`/`mov` | Full transcode video settings, `-an` |
-| → `gif` | Single pass: `fps=F,scale=W:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a`, `-loop 0`. `F = min(source fps, 15)`, `W = min(source width, 640)`; if duration > 60 s → `F = 10`, `W = min(width, 480)` (keeps output size sane) |
+| → `gif` | Single pass: `fps=F,scale='min(iw,W)':-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=sierra2_4a`, `-loop 0`. `F = min(source fps, 15)`, `W = 640`; if duration > 60 s → `F = min(source fps, 10)`, `W = 480` (keeps output size sane) |
 | all images | `ImageOps.exif_transpose()` first (orientation tag reset to 1); first frame only for multi-image HEIC (primary image) |
 | → `png` | Lossless; keep alpha and mode where PNG supports it (CMYK/YCbCr → RGB); keep ICC + EXIF; `compress_level=6` |
 | → `jpg` | `quality=95, subsampling=0`; alpha flattened onto white; any mode → RGB; keep ICC + EXIF |
-| → `heic` | pillow-heif `quality=90`; mode → RGB/RGBA (8-bit); keep ICC + EXIF |
+| → `heic` | pillow-heif `quality=90`, grid tiles of 2048 px (large photos stay decodable); mode → RGB/RGBA (8-bit); keep ICC + EXIF |
 
 After every conversion: output must exist and be > 0 bytes, otherwise `ConversionError`. FFmpeg stderr tail goes to logs only, never to the user.
 
@@ -136,93 +136,160 @@ Each task = one branch + PR (`feat/b-<name>`), reviewed by Developer A.
 ### Day 1 – Wed 28.10 · Foundations (independent of A's skeleton)
 
 **B1. Tooling spike** – *do first, results reported to A for the Dockerfile*
-- [ ] `uv add pillow pillow-heif`; install FFmpeg locally (`winget install Gyan.FFmpeg` / `brew` / `apt`).
-- [ ] Verify on Windows **and** in `python:3.12-slim` + `apt install ffmpeg`: HEIC decode + **encode** with the pillow-heif wheel (no system libheif needed?), `libmp3lame` and `libx264` present in the distro FFmpeg, gif palette filter works.
-- [ ] Write findings (FFmpeg version, extra apt packages) into the PR description.
+- [x] `uv add pillow pillow-heif`; install FFmpeg locally (`winget install Gyan.FFmpeg` / `brew` / `apt`).
+- [x] Verify on Windows **and** in `python:3.12-slim` + `apt install ffmpeg`: HEIC decode + **encode** with the pillow-heif wheel (no system libheif needed?), `libmp3lame` and `libx264` present in the distro FFmpeg, gif palette filter works.
+- [x] Write findings (FFmpeg version, extra apt packages) into the PR description.
+
+Findings (28.10, re-check any time with `uv run python scripts/check_media_tools.py`):
+
+| | Windows 11 | Docker `python:3.12-slim` |
+|---|---|---|
+| Base | – | Debian 13.7 (trixie) |
+| FFmpeg | 9.0.2 (`winget install Gyan.FFmpeg`) | 7.1.5 (`apt-get install --no-install-recommends ffmpeg`) |
+| `libmp3lame`, `libx264`, `aac`, `flac`, PCM encoders | ✓ | ✓ |
+| `mov`/`mp3`/`flac`/`wav`/`gif` demuxers, `palettegen`/`paletteuse` | ✓ | ✓ |
+| Pillow 13.0.0 + pillow-heif 1.8.1 (libheif 1.23.6, x265 encoder, libde265 decoder) | ✓ | ✓ |
+| HEIC encode + decode | ✓ | ✓ – **also in a bare image without any apt packages** |
+
+→ Dockerfile needs **only** `apt-get install -y --no-install-recommends ffmpeg`; no `libheif`, no extra codecs (wheel bundles libheif + x265 + libde265). Dev/CI FFmpeg versions differ (9.x vs 7.1) – every flag used in §4 exists in both.
 
 **B2. Format registry** – `formats.py`
-- [ ] `Category` and `Format` `StrEnum`s, `CATEGORY_OF`, `EXTENSION_ALIASES`, `MIME_TYPES` (contract §5 download list), `CATEGORY_LABELS` (`Audio`, `Wideo`, `Obraz`).
-- [ ] `normalize_extension(filename) -> Format | None`, `allowed_targets(fmt) -> list[Format]` (same category minus source, in registry order).
-- [ ] `formats_payload()` → exact `GET /api/formats` body from the contract.
-- [ ] Tests: payload equals the contract example 1:1; `.JPEG` → `jpg`; `archive.tar.gz`, no extension, `.txt` → `None`.
+- [x] `Category` and `Format` `StrEnum`s, `CATEGORY_FORMATS`, `CATEGORY_OF`, `EXTENSION_ALIASES`, `MIME_TYPES` (contract §5 download list), `CATEGORY_LABELS` (`Audio`, `Wideo`, `Obraz`).
+- [x] `format_from_filename(filename) -> Format | None`, `parse_format(value)` (also used for `target_format`), `allowed_targets(fmt)` (same category minus source, in registry order), `can_convert(source, target)`.
+- [x] `GET /api/formats` (moved here from B7 – unblocks the frontend picker): `FormatsResponse` in `schemas.py`, limits from `settings`, requires login.
+- [x] Tests: response equals the contract example 1:1; `.JPEG` → `jpg`; `archive.tar.gz`, no extension, `.txt` → `None`; 18 conversion pairs; `401` without session.
 
 **B3. Settings & messages** (small PR into A's files once the skeleton is merged)
-- [ ] `config.py`: `WORKER_COUNT=2`, `CONVERSION_TIMEOUT_SECONDS=600`, `PROBE_TIMEOUT_SECONDS=30`, `CLEANUP_INTERVAL_SECONDS=600`, `STALE_UPLOAD_SECONDS=3600`, `MAX_IMAGE_PIXELS=100_000_000`, `FFMPEG_PATH="ffmpeg"`, `FFPROBE_PATH="ffprobe"` (A already has `MAX_FILE_SIZE`, `MAX_FILES_PER_JOB`, `OUTPUT_RETENTION_SECONDS`).
-- [ ] `messages.py` additions – see §6.
+- [x] `config.py`: `WORKER_COUNT=2`, `CONVERSION_TIMEOUT_SECONDS=600`, `PROBE_TIMEOUT_SECONDS=30`, `CLEANUP_INTERVAL_SECONDS=600`, `STALE_UPLOAD_SECONDS=3600`, `MAX_IMAGE_PIXELS=100_000_000`, `FFMPEG_PATH="ffmpeg"`, `FFPROBE_PATH="ffprobe"` (A already has `MAX_FILE_SIZE`, `MAX_FILES_PER_JOB`, `OUTPUT_RETENTION_SECONDS`). Numeric ones are `PositiveInt`; documented in `.env.example`; `/api/health` checks `FFMPEG_PATH`/`FFPROBE_PATH`.
+- [x] `messages.py` additions – see §6 (`CORRUPTED_FILE_BY_CATEGORY`, `NOT_FOUND_FILE`, `CONVERSION_*`, `JOB_INTERRUPTED`; `INVALID_TARGET` with `{target}` already existed).
 
 **B4. Converter interface + FFmpeg helpers** – `converters/__init__.py`, `ffmpeg.py`, `probe.py`
-- [ ] `convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) -> None`, raises `ConversionError(reason, timeout: bool)`.
-- [ ] `run_ffmpeg(args, timeout)` / `run_ffprobe(path, fmt)` with hardening flags; `TimeoutExpired` → kill + `ConversionError(timeout=True)`.
-- [ ] `MediaInfo` dataclass + `probe(path, fmt)`.
+- [x] `convert(src: Path, dst: Path, source: Format, target: Format, timeout: int) -> None`, raises `ConversionError(reason, timeout: bool)`. Dispatches via `CONVERTERS[category]` (filled by B9/B10/B12); writes `dst.part`, renames only if non-empty; any converter exception is wrapped.
+- [x] `run_ffmpeg(src, src_format, output_args, dst, dst_format, timeout)` / `run_ffprobe(src, src_format, timeout)` with hardening flags, forced demuxer **and muxer** (outputs are `*.part`), `-threads` per worker; failure/timeout/missing binary → `FFmpegError(timeout=bool)`.
+- [x] `MediaInfo` (`AudioStream` with bit depth, `VideoStream` with fps, `ImageInfo` with alpha) + `probe(path, fmt)` raising `ProbeError`. Images are fully decoded (catches truncated JPEGs); `MAX_IMAGE_PIXELS` enforced.
+- [x] Tests: `tests/conversion/conftest.py` generates sample media per session; renamed/mismatched/truncated/empty files, audio-only mp4, unicode paths, timeout, command hardening.
 
 ✅ **Milestone:** `GET /api/formats` logic and converter interface exist; spike results shared with A.
 
 ### Day 2 – Thu 29.10 · Upload & validation (critical component)
 
 **B5. Models & storage** – `models.py`, `storage.py`
-- [ ] Tables from §2; `upload_dir(job_id)`, `output_dir(job_id)`, `display_name(raw)`, `output_names(inputs, target)` – stem + new extension, de-duplicated (`foto.png` + `foto.heic` → `foto.jpg`, `foto (2).jpg`).
+- [x] Tables from §2; `upload_dir(job_id)`, `output_dir(job_id)`, `display_name(raw)`, `output_names(inputs, target)` – stem + new extension, de-duplicated (`foto.png` + `foto.heic` → `foto.jpg`, `foto (2).jpg`).
+  - Enums (`JobStatus`, `ResultStatus`, `Format`, `Category`) stored as their lowercase values; `UNIQUE(job_id, position)`; FK cascades; models registered via `app/conversion/__init__.py`.
+  - `storage.py` also: `upload_path` / `output_path`, `to_relative` / `to_absolute` (DB paths relative to `DATA_DIR`, refuses `..`), `remove_uploads` / `remove_outputs`. `display_name` also strips invisible formatting characters (right-to-left override) and trailing dots; de-duplication is case-insensitive.
 
 **B6. Streaming upload** – `upload.py`
-- [ ] `async def receive_upload(request, job_id) -> UploadResult(files: list[StagedFile], target_format: str | None)`.
-- [ ] Callbacks: on part header parse `Content-Disposition` (`name`, `filename`, RFC 5987 `filename*`), apply rules 2–3 from §3, open `{file_id}.{ext}.part`; on data count bytes and apply rule 4; `target_format` buffered ≤ 32 bytes; unknown fields ignored (≤ 1 KB each).
-- [ ] Error → close/delete files, drain remaining body (cap from §0), raise `AppError`.
-- [ ] Tests (direct, with a fake `request.stream()` generator and `MAX_FILE_SIZE` overridden to 1 MB): 1 and 2 files OK, 3 files, limit + 1 byte, exactly at limit OK, empty filename part, `filename*` UTF-8 name (`zażółć.png`), missing boundary.
+- [x] `async def receive_upload(request, job_id) -> UploadResult(files: list[StagedFile], target_format: str | None)`.
+- [x] Callbacks: on part header parse `Content-Disposition` (`name`, `filename`, RFC 5987 `filename*` – handled by us, `parse_options_header` drops it), apply rules 2–3 from §3, open the file; on data count bytes and apply rule 4; `target_format` buffered ≤ 32 bytes (last value wins); unknown fields and `files` parts without a filename are ignored without being stored.
+  - **Change:** inputs are written straight to `uploads/{job_id}/{file_id}.{ext}` (no `.part` + rename) – uploads are never served, the DB row is written only after validation, and any failure removes the whole job upload dir.
+- [x] Error → close/delete files, drain remaining body (cap from §0), raise `AppError`. Also: malformed/truncated body → `VALIDATION_ERROR`; client disconnect → files removed, exception re-raised.
+- [x] Tests (fake `request.stream()` with 1-byte to 64 KB chunks, `MAX_FILE_SIZE` = 1000 B, plus real HTTP through `TestClient`): 1 and 2 files OK, 3 files, limit + 1 byte, exactly at limit OK, empty filename part, `filename*` UTF-8 name (`zażółć.png`), wrong content type, draining + cap, disconnect.
+- Benchmark: 250 MB parsed and written in ~0.35 s (~700 MB/s) – the network is the only limit.
 
 **B7. Validation & `POST /api/jobs`** – `validation.py`, `jobs.py`, `router.py`
-- [ ] Rules 5–8 from §3; probes via `run_in_threadpool`.
-- [ ] On success: rename `.part` files, insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`).
-- [ ] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
-- [ ] `GET /api/formats` endpoint.
-- [ ] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
+- [x] Rules 5–8 from §3; probes via `run_in_threadpool`. Rule 7 is checked for all files before any file is probed (probing is the expensive part).
+- [x] On success: insert `Job(status=queued)` + `InputFile`s in one transaction, commit, then `app.state.job_runner.submit(job_id)`; return `202` + Job object (`result: null`). Any failure removes the job's upload dir.
+  - `worker.py` has the `JobRunner` protocol + `ManualRunner` (records IDs); `startup()` installs `ManualRunner` until B8 replaces it.
+  - `jobs.job_response()` builds the contract Job object (also for done/error jobs – reused by B11/B15).
+- [x] `openapi_extra` with the multipart request schema so `/docs` still documents the endpoint (no `UploadFile` params).
+- [x] ~~`GET /api/formats` endpoint~~ – done in B2.
+- [x] Tests via `auth_client` + `ManualRunner`: every error code of the endpoint, renamed `.txt` → `.png` → `CORRUPTED_FILE`, `.wav` + `.png` with target `mp3` → `INVALID_TARGET` naming `*.png`, target = source, target from other category, unknown target, unauthenticated → `401` without the body being stored.
 
 ✅ **Milestone M1 (B part):** frontend can upload against the real backend; jobs stay `queued`.
 
 ### Day 3 – Fri 30.10 · Worker, audio & image converters
 
 **B8. Worker** – `worker.py`, `conversion/__init__.py`
-- [ ] `ThreadedJobRunner(worker_count)`: `queue.Queue`, daemon threads, `stop()` puts sentinels and joins with timeout.
-- [ ] `process_job(job_id)` (own `SessionLocal`): mark `processing` + `started_at`; for each file in order: probe → `convert()` → record `OutputFile` → on first `ConversionError` stop, delete partial outputs, write `Result(status=error, message=...)`, job `error`; on success `Result(success, expires_at)`, job `done`; always delete uploads. Unexpected exceptions → same as error with the generic message + logged traceback.
-- [ ] `startup(app)`: jobs in `processing` → `error` with `JOB_INTERRUPTED` (+ delete their files); jobs in `queued` with uploads still on disk → re-submitted (else → error); start runner and cleanup loop. `shutdown(app)`: stop both.
-- [ ] Tests: lifecycle `queued → processing → done` with `ManualRunner`, failing file → `error` + message names the file + no outputs, recovery on startup, timeout path (patched `run_ffmpeg`).
+- [x] `ThreadedJobRunner(worker_count)`: `queue.Queue`, daemon threads, `stop()` puts sentinels and joins with timeout. A crash in one job never kills its thread.
+- [x] `process_job(job_id)` (own `SessionLocal`): claim with `UPDATE … WHERE status='queued'` (a job submitted twice runs once), mark `processing` + `started_at`; for each file in order: `convert()` → record `OutputFile` → on first `ConversionError` stop, delete outputs, write `Result(status=error, message=...)` (timeout → `CONVERSION_TIMEOUT`), job `error`; on success `Result(success, expires_at)`, job `done`; always delete uploads and null `InputFile.path`. Unexpected exceptions → error with the generic `INTERNAL_ERROR` message + logged traceback.
+  - **Change:** no probe in the worker – `convert()` takes no probe result (B4), converters probe themselves when their presets need it.
+- [x] `startup(app)`: `recover_jobs()` – jobs in `processing` → `error` with `JOB_INTERRUPTED` (+ delete their files); jobs in `queued` with uploads still on disk → re-submitted oldest first (else → error); start runner (a runner pre-set on `app.state` – tests – is kept). `shutdown(app)`: stop the threads. Cleanup loop is added in B14.
+- [x] Tests: lifecycle `queued → processing → done` with `ManualRunner` (conversion tests' `app` fixture pre-sets it) and a fake image converter, failing/timing-out file → `error` + message names the file + no outputs, duplicate output names, double submit, real threads (2 workers, crash survival, app start/stop), recovery on startup.
 
 **B9. Audio converters** – `converters/audio.py`: presets from §4 (bit depth / sample-rate / channel rules).
+- [x] `presets.audio_args(stream, target)` (pure, unit-tested) + `convert_audio` (probe → `run_ffmpeg`), registered as `CONVERTERS[Category.AUDIO]` at the bottom of `converters/__init__.py`. `presets.py` imports probe types only under `TYPE_CHECKING` (probe imports the converters package).
+- [x] Tests: all 6 pairs (codec, bit depth, rate, channels, duration); WAV↔FLAC bit-exact (decoded PCM MD5); 96 kHz/6 ch → 48 kHz stereo MP3; 88.2 kHz → 44.1 kHz; tags kept (Polish characters); cover art dropped; full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
 
 **B10. Image converters** – `converters/image.py`: presets from §4 (EXIF orientation, alpha flattening, ICC/EXIF carry-over, CMYK, palette and 16-bit modes).
+- [x] `convert_image` registered as `CONVERTERS[Category.IMAGE]`; save options in `presets.image_save_options()`. ICC kept only when the colour family is unchanged (rgb→rgb, gray→gray); CMYK → sRGB via `ImageCms` with the embedded profile; 16-bit gray scaled (÷256) to 8-bit for JPG/HEIC, kept for PNG; palette transparency counts as alpha; grayscale JPG/PNG stays grayscale.
+- [x] **HEIC grid tiles (`HEIC_GRID_TILE_SIZE = 2048`)** – found while benchmarking: a single HEVC frame of a detailed 24–48 MP photo (≳18 MB) is not decodable by libde265 (our own decoder – the output would not open). Tiled like iPhone HEICs it decodes; 2048 px tiles keep the single-frame speed (512 px: ~3× slower). Worst case (48 MP noise): JPG→HEIC 25 s, HEIC→JPG 3 s, JPG→PNG 5 s.
+- [x] Tests (no FFmpeg needed): all 6 pairs, alpha flattening (exact colour), palette transparency, EXIF orientation + other tags, ICC carry-over, CMYK, 16-bit scaling, tiled HEIC, full job through the worker. Also green in `python:3.12-slim`.
 
 **B11. `GET /api/jobs/{job_id}`** – `jobs.py`, `router.py`
-- [ ] `job_id` typed `str`; malformed UUID → `404 NOT_FOUND` (not a `400` validation error). Missing → `404`, other user's → `403 FORBIDDEN`.
-- [ ] Serialization exactly as the contract Job object; `url = /api/jobs/{id}/files/{index}`.
+- [x] `job_id` typed `str`; malformed UUID → `404 NOT_FOUND` (not a `400` validation error). Missing → `404`, other user's → `403 FORBIDDEN`. Ownership check lives in `jobs.get_owned_job()` (reused by B13); IDs are canonicalized, so upper-case UUIDs work.
+- [x] Serialization exactly as the contract Job object; `url = /api/jobs/{id}/files/{index}`.
+- [x] Tests: queued (same body as the 202), done via the real image converter, failed, unknown/malformed ID, another user's job, no session.
 
 ### Days 4 – Sat 31.10 to Mon 02.11 · Video, downloads, retention
 
 **B12. Video & GIF converters** – `converters/video.py`: remux decision table, remux-fail → transcode fallback, gif palette pipeline with fps/width/duration rules.
+- [x] `presets.video_plans(info, target)` (pure, unit-tested) returns the FFmpeg arguments to try in order; `convert_video` (probe → run plans) registered as `CONVERTERS[Category.VIDEO]`. All attempts share one `timeout`: the fallback gets only the remaining time, and a timed-out remux is not retried.
+- [x] **Changes vs. the original plan:** `-preset medium` instead of `slow` (benchmark below). Every remux, also `mov` → `mp4`, has the transcode fallback. `MediaInfo.audio_codecs` lists all audio tracks: the mp4 muxer accepts PCM, so a PCM second track would pass silently into the output. `0:V:0` instead of `0:v:0`, so cover art stored before the video isn't picked. `hvc1` tag also for `mp4` → `mov`. GIF width is limited inside the filter (`min(iw,W)`): that width is after rotation, so portrait clips aren't upscaled.
+- [x] Verified behaviour: stream copy keeps rotation metadata; a transcode applies it once and clears it. Data tracks are dropped, but a timecode track is rebuilt in the mp4 from metadata (harmless, kept). 10-bit HEVC remuxes as it is; transcoded to 8-bit `yuv420p` it loses HDR but doesn't fail. Transparent GIFs are flattened.
+- [x] Tests: decision table, fallback and time budget, all 6 pairs, bit-identical remux, faststart, ProRes, PCM, HEVC `hvc1`, 10-bit, Opus, two audio tracks, timecode, cover art, odd sizes, rotation, GIF rules, full job through the worker. Also green in `python:3.12-slim` with FFmpeg 7.1.5.
+- Benchmark (12 CPUs, Windows, 6 FFmpeg threads per job; `testsrc2` + noise, a worst case for x264; 294 MB = 1080p30 100 s, 303 MB = 4K30 40 s):
+
+  | Conversion | 1 job | 2 parallel jobs | Output |
+  |---|---|---|---|
+  | Remux 1080p (PCM → AAC) | 4.7 s | – | 286 MB |
+  | → GIF 1080p | 19.8 s | – | 77 MB |
+  | Transcode 1080p `slow` | 367 s | 548 s | 458 MB |
+  | Transcode 1080p `medium` | 188 s | 293 s | 449 MB |
+  | Transcode 4K `medium` | – | 396 s | 525 MB |
+
+  ⚠️ For B18: the 2-vCPU host runs each job on 1 thread, not 6, so a transcode of this size may exceed `CONVERSION_TIMEOUT_SECONDS` (600 s) there. Measure on the target host; the options are a longer timeout or `-preset fast`.
 
 **B13. Downloads** – `GET /api/jobs/{job_id}/files/{index}`
-- [ ] Order of checks: job exists (`404`) → owner (`403`) → job `done` and `index` in range (`404`, "Nie znaleziono pliku.") → `now() > expires_at` or `purged` or file missing on disk (`410 FILE_EXPIRED`).
-- [ ] `FileResponse` with `MIME_TYPES[target]` and `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded name>`.
+- [x] Order of checks: job exists (`404`) → owner (`403`) → job `done` and `index` in range (`404`, "Nie znaleziono pliku.") → `now() > expires_at` or `purged` or file missing on disk (`410 FILE_EXPIRED`). In `jobs.get_download()`; `index` is compared as text with the existing outputs, so `abc`, `-1`, `01` or a huge number are `404`, never a `400` validation error. A file is still available at exactly `expires_at` ("after this time", contract §5).
+- [x] `FileResponse` with `MIME_TYPES[target]` and `Content-Disposition: attachment; filename="<ascii fallback>"; filename*=UTF-8''<percent-encoded name>` (`storage.content_disposition()`). The contract shows only `filename*`; the extra fallback is compatible, browsers prefer `filename*`.
+- [x] Tests: `tests/conversion/test_downloads.py` – content and headers with the real image converter, Polish and non-Latin names, `url` from the job response works, queued/failed job, bad indexes, unknown job, another user's job, `expires_at` boundary, `purged`, file missing on disk, no session.
 
 **B14. Retention** – `cleanup.py`
-- [ ] Asyncio loop every `CLEANUP_INTERVAL_SECONDS` calling `cleanup_once()` in a thread: delete `outputs/{job_id}` where `expires_at < now()`, set `Result.purged = True`; remove upload dirs older than `STALE_UPLOAD_SECONDS` that belong to no `queued`/`processing` job (crashed uploads).
-- [ ] Tests with A's `clock` fixture: download works at `expires_at - 1`, `410` after, files gone after `cleanup_once()`.
+- [x] Asyncio loop every `CLEANUP_INTERVAL_SECONDS` calling `cleanup_once()` in a thread: delete `outputs/{job_id}` where `expires_at < now()`, set `Result.purged = True`; remove upload dirs older than `STALE_UPLOAD_SECONDS` that belong to no `queued`/`processing` job (crashed uploads).
+  - `startup()` creates the task (`app.state.cleanup_task`), `shutdown()` cancels it. The loop sleeps first, so app start (and every test client) doesn't run a cleanup; an exception is logged and the next run retries.
+  - Purged results keep their rows (job history, `GET /api/jobs/{id}` still shows `done`); output paths are set to `NULL`. An output dir that can't be deleted (a file still open on Windows) is not marked purged, so the next run retries.
+  - "Older than" for uploads = newest mtime of the dir **and its files**: an upload in progress has no job row yet, but its file's mtime grows while it streams.
+- [x] Tests with A's `clock` fixture (`tests/conversion/test_cleanup.py`): download works at `expires_at - 1`, `410` after, files gone after `cleanup_once()`; kept at exactly `expires_at`; failed jobs ignored; retry of undeletable outputs; stale vs. fresh vs. still-streaming uploads, queued jobs' uploads kept, leftovers of finished jobs removed; the loop survives errors; app start/stop.
 
 **B15. `GET /api/jobs`** *(nice-to-have)* – current user's jobs with `created_at > now - 24 h`, newest first, `{"items": [...]}`.
+- [x] `jobs.recent_jobs()`; the window is `OUTPUT_RETENTION_SECONDS`, so the list and downloads expire together. Jobs created in the same second are ordered by ID (deterministic). Items are the same Job objects as `GET /api/jobs/{id}`.
+- [x] Tests (`tests/conversion/test_list_jobs.py`): empty list, order, items equal the single-job response, 24 h boundary, other users' jobs hidden, no session.
 
 ✅ **Milestone M2 (B part):** full flow locally for all three categories: upload → poll → download.
 
 ### Day 5 – Tue 03.11 · Hardening & release candidate
 
 **B16. Conversion matrix test** – `test_converters.py`
-- [ ] Session-scoped fixtures generated at test time (nothing binary committed): audio via `ffmpeg -f lavfi sine` (16-bit wav, 24-bit flac, stereo mp3), video via `testsrc2` + `sine` (h264/aac mp4, mov with PCM audio, ProRes mov, 2-s gif), images via Pillow (RGBA png, JPEG with EXIF orientation 6 + ICC, HEIC).
-- [ ] All **18 pairs** parametrized: output probes as the target format, duration within ±0.2 s (audio/video), image dimensions preserved (after orientation), PNG→JPG has no alpha, WAV→FLAC is bit-exact (compare decoded PCM hash).
-- [ ] Marked `ffmpeg`; skipped with a clear reason if FFmpeg is missing (CI installs it – A17).
+- [x] Session-scoped fixtures generated at test time (nothing binary committed): audio via `ffmpeg -f lavfi sine` (16-bit wav, 24-bit flac, stereo mp3), video via `testsrc2` + `sine` (h264/aac mp4, mov with PCM audio, ProRes mov, 2-s gif), images via Pillow (RGBA png, JPEG with EXIF orientation 6 + ICC, HEIC). The shared `media` samples are reused; ProRes mov, 2-s gif and the oriented JPEG are module-scoped in `test_converters.py`.
+- [x] All **18 pairs** parametrized: output probes as the target format, duration within ±0.2 s (audio/video), image dimensions preserved (after orientation), PNG→JPG has no alpha, WAV→FLAC is bit-exact (compare decoded PCM hash). Cases come from the format registry, and `test_matrix_covers_all_18_pairs` fails if a pair is missing. `mov` runs twice (PCM → remux path, ProRes → transcode path): 20 conversions. Also checked: output codec per target and video frame size. FLAC→WAV is bit-exact too.
+- [x] Marked `ffmpeg` (`requires_ffmpeg`); skipped with a clear reason if FFmpeg is missing (CI installs it – A17). ⚠️ As of 02.11 the repo has no `.github/workflows` yet, so until A17 lands the matrix runs only locally and in the `python:3.12-slim` check.
 
 **B17. Messages & contract pass**
-- [ ] Every error from `POST /api/jobs` and downloads compared against `openapi.yaml` examples (codes, HTTP statuses, `details.file`).
-- [ ] Polish texts reviewed by a native speaker on the frontend team (quotation marks „…”).
+- [x] Every error from `POST /api/jobs` and downloads compared against `openapi.yaml` examples (codes, HTTP statuses, `details.file`). `tests/conversion/test_contract.py` loads `openapi.yaml` and compares whole bodies with the examples (TOO_MANY_FILES, FILE_TOO_LARGE, UNSUPPORTED_FORMAT, CORRUPTED_FILE, 401, 403, 404, 410), INVALID_TARGET with the `api-contract.md` example, and checks that `details` only holds keys of the `Error` schema. Skipped where `docs/` isn't available (Docker test image).
+  - **Fixed (decision 02.11: backend follows the contract):** `details` carried template values the contract doesn't have: `TOO_MANY_FILES` `{limit}` (contract: `null`), `FILE_TOO_LARGE` `+limit_mb`, `INVALID_TARGET` `+target`. `error()` (A's `core/errors.py`) got `format_args`: values that fill the message only. Developer A's `USER_LIMIT_REACHED` still puts `{limit}` into `details`; not touched (A's endpoint).
+  - Documented variant: a bad download `index` gives `404 NOT_FOUND` with "Nie znaleziono pliku." instead of the example's "Nie znaleziono zadania." (contract §2: job / file does not exist).
+- [ ] Polish texts reviewed by a native speaker on the frontend team (quotation marks „…”). Self-check done: „…” used everywhere. Note: `Możesz przesłać maksymalnie {limit} pliki naraz.` is only correct for limits 2–4 (5+ would need "plików"); fine while `MAX_FILES_PER_JOB = 2` (contract).
 
 **B18. Performance check**
-- [ ] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.
-- [ ] If a 250 MB transcode exceeds ~5 min: switch `preset slow → medium` in `presets.py` (not the CRF).
+- [x] Script (`scripts/load_test.py`, httpx async): 10 users × 2 files of ~250 MB (mov remux, mp4 → gif, flac → mp3) in parallel against the Docker image on the target host. Record: upload time, max queue wait, conversion times, peak disk and RAM.
+  - `load_test.py generate` makes ~240 MB samples (1080p noise h264 mov with PCM / mp4, ProRes 422 mov, pink-noise FLAC); `run` gives users the scenarios round-robin, adding **ProRes → mp4** (the realistic full transcode – an h264 `mov` only remuxes).
+  - Auth: `--sessions FILE` (one session cookie per user) for the real host once A12 exists; `--user-header` for `scripts/load_test_server.py`, a **local-only** launcher that authenticates by header and serves `/load-test/stats` (peak memory from cgroup v2, peak `DATA_DIR`). `tests/conversion/test_load_test.py` runs both scripts in-process with tiny files.
+  - ⚠️ Not yet run on the target host: no Dockerfile/deployment in the repo (A15–A17), login still a stub (A12). **Run done 02.11 on a simulated host** instead: `python:3.12-slim` + FFmpeg 7.1.5, `--cpuset-cpus 0,1 --memory 4g` (no swap), app told it has 2 CPUs (→ 1 FFmpeg thread per job, as on the host).
+
+  | 10 users, 20 files, 4.7 GB at once | Result |
+  |---|---|
+  | Jobs | 10/10 done, no timeout, wall time 808 s |
+  | Upload (all at once, loopback) | 63 s per user (~75 MB/s total; on the host the network decides) |
+  | Conversion per job (2 files) | mov remux 10–16 s · flac → mp3 82 s · mp4 → gif 73–136 s · **ProRes → mp4 424–449 s** |
+  | Max queue wait | **669 s** (a 15-s remux waited behind ProRes transcodes – FIFO) |
+  | Peak memory | 1225 MiB processes (4.1 GB incl. page cache, which is reclaimable) |
+  | Peak `DATA_DIR` | 4.6 GiB (all uploads on disk at once + outputs) |
+
+- [x] `preset medium` is already in use (B12). If a 250 MB transcode still exceeds ~5 min on the host: longer timeout or `preset fast` in `presets.py` (not the CRF).
+  - **Decision: no change.** A 241 MB ProRes 422 file (12.6 s, 378 frames) transcodes in ~220 s with both workers busy – under 5 min and the 600 s timeout.
+  - ⚠️ **Risk for the team:** that is ~1.75 frames/s per job, so any transcode longer than **~35 s of 1080p** hits the 600 s timeout (`CONVERSION_TIMEOUT`). A 250 MB *ProRes Proxy* (~45 s) or old MJPEG camera clip would. Options: `CONVERSION_TIMEOUT_SECONDS=1800` (env only, longer queue waits), `X264_PRESET="veryfast"` (~3× faster, larger files at the same CRF), or accept it (the user gets the Polish timeout message). Re-measure on the real host first.
+  - Disk sizing: ~5 GB peak for 10 parallel users, plus outputs kept 24 h → plan ≥ 15 GB free for `DATA_DIR`.
+  - Queue fairness (open question 4): short jobs wait behind long transcodes; a per-user limit or a "fast lane" for remux/audio would fix it – not in scope for v1.
 
 ### Day 6 – Wed 04.11 · Release
 - [ ] Fix bugs from joint E2E testing; smoke test one conversion per category on production; update `docs/` if anything in the contract changed.
@@ -255,7 +322,7 @@ from app.auth.models import User                     # FK target users.email
 ```
 - `create_app()` includes `app.conversion.router` and calls `conversion.startup(app)` / `shutdown(app)` from its lifespan.
 - **Single uvicorn worker process** (in-process queue) – already in A15.
-- Dockerfile: FFmpeg with `libmp3lame` + `libx264` (Debian's `ffmpeg` package has both); any extra packages from the B1 spike.
+- Dockerfile: `apt-get install -y --no-install-recommends ffmpeg` is enough (verified in B1: Debian's package has `libmp3lame` + `libx264`; pillow-heif needs no system packages).
 - Caddy: `max_size 520MB` and long timeouts on `/api/jobs*` – already in A16.
 - CI installs `ffmpeg` so the matrix test runs – already in A17.
 - `conftest.py`: `auth_client`, `clock`, temp `DATA_DIR`; B adds conversion fixtures in `tests/conversion/conftest.py`.
@@ -268,7 +335,7 @@ Until A's skeleton is merged, B works on pure modules (`formats.py`, `converters
 
 | Risk | Mitigation |
 |---|---|
-| HEIC encoding unavailable in the Docker image | B1 spike on Day 1; fallback: build pillow-heif against Debian `libheif-dev` + `libde265`/`x265` |
+| HEIC encoding unavailable in the Docker image | ✓ Resolved in B1: the pillow-heif wheel bundles encoder + decoder. Fallback if a future wheel drops x265: build against Debian `libheif-dev` + `libde265`/`x265` |
 | Long transcodes block the queue | 2 workers, remux instead of transcode where possible, per-file timeout, preset tuning in B18 |
 | Browser shows "network error" instead of 413 | Drain body before responding (§0); frontend also pre-validates size via `GET /api/formats` |
 | Malicious media (playlists, decompression bombs) | Forced demuxers, `-protocol_whitelist file`, `MAX_IMAGE_PIXELS`, inputs stored under UUIDs |

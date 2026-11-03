@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,17 @@ from app.core.errors import register_exception_handlers
 from app.health.router import router as health_router
 
 
+def configure_logging() -> None:
+    """Show INFO logs of our own `app.*` loggers next to uvicorn's (uvicorn only configures
+    its own loggers)."""
+    app_logger = logging.getLogger("app")
+    if not app_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s - %(message)s"))
+        app_logger.addHandler(handler)
+        app_logger.setLevel(logging.INFO)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db()
@@ -23,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(title="Konwerter plików multimedialnych", version="1.0.0", lifespan=lifespan)
 
     app.add_middleware(

@@ -24,7 +24,7 @@ def make_app() -> FastAPI:
 
     @app.get("/app-error")
     def app_error():
-        raise error(ErrorCode.FILE_TOO_LARGE, file="film.mov", limit_mb=250)
+        raise error(ErrorCode.FILE_TOO_LARGE, file="film.mov", format_args={"limit_mb": 250})
 
     @app.post("/validated")
     def validated(payload: Payload):
@@ -82,6 +82,21 @@ def test_error_without_details_has_none():
     assert error(ErrorCode.NO_FILES).details is None
 
 
+def test_format_args_fill_the_message_but_not_details():
+    err = error(ErrorCode.TOO_MANY_FILES, format_args={"limit": 2})
+    assert err.message == "Możesz przesłać maksymalnie 2 pliki naraz."
+    assert err.details is None
+
+    err = error(ErrorCode.INVALID_TARGET, file="a.wav", format_args={"target": "PNG"})
+    assert err.message == "Nie można przekonwertować pliku „a.wav” do formatu PNG."
+    assert err.details == {"file": "a.wav"}
+
+
+def test_braces_in_values_are_not_formatted_again():
+    err = error(ErrorCode.UNSUPPORTED_FORMAT, file="{x}.pdf")
+    assert err.message == "Format pliku „{x}.pdf” nie jest obsługiwany."
+
+
 def test_error_message_override():
     err = error(ErrorCode.NOT_FOUND, message="Nie znaleziono zadania.")
     assert err.message == "Nie znaleziono zadania."
@@ -98,7 +113,7 @@ def test_app_error_response(client):
         "status": "error",
         "code": "FILE_TOO_LARGE",
         "message": "Plik „film.mov” przekracza maksymalny rozmiar 250 MB.",
-        "details": {"file": "film.mov", "limit_mb": 250},
+        "details": {"file": "film.mov"},
     }
 
 

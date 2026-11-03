@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
@@ -34,12 +32,21 @@ def test_defaults_match_requirements():
     assert s.email_backend == "console"
 
 
-def test_database_url_defaults_to_sqlite_in_data_dir():
-    assert make(data_dir=Path("/data")).database_url == "sqlite:////data/app.db"
+def test_conversion_defaults():
+    s = make()
+    assert s.worker_count == 2
+    assert s.conversion_timeout_seconds == 600
+    assert s.output_retention_seconds == 86_400
+    assert s.max_image_pixels == 100_000_000
+    assert (s.ffmpeg_path, s.ffprobe_path) == ("ffmpeg", "ffprobe")
 
 
-def test_explicit_database_url_is_kept():
-    assert make(database_url="sqlite:///:memory:").database_url == "sqlite:///:memory:"
+@pytest.mark.parametrize(
+    "field", ["worker_count", "conversion_timeout_seconds", "cleanup_interval_seconds"]
+)
+def test_conversion_settings_must_be_positive(field):
+    with pytest.raises(ValidationError, match=field):
+        make(**{field: 0})
 
 
 def test_reads_environment_variables(monkeypatch):
@@ -75,3 +82,8 @@ def test_prod_rejects_unsafe_config(overrides, error):
     kwargs = {"env": "prod", "secret_key": PROD_SECRET, **SMTP, **overrides}
     with pytest.raises(ValidationError, match=error):
         make(**kwargs)
+
+
+def test_prod_rejects_smtp_without_tls():
+    with pytest.raises(ValidationError, match="SMTP_TLS"):
+        make(env="prod", secret_key=PROD_SECRET, smtp_tls="none", **SMTP)

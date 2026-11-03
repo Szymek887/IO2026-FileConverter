@@ -4,7 +4,7 @@
 
 Raise errors with the `error()` helper; the HTTP status comes from the code:
 
-    raise error(ErrorCode.FILE_TOO_LARGE, file=upload.filename, limit_mb=250)
+    raise error(ErrorCode.FILE_TOO_LARGE, file=upload.filename, format_args={"limit_mb": 250})
 """
 
 import logging
@@ -79,11 +79,19 @@ class AppError(Exception):
         self.details = details
 
 
-def error(code: ErrorCode, *, message: str | None = None, **details: Any) -> AppError:
+def error(
+    code: ErrorCode,
+    *,
+    message: str | None = None,
+    format_args: dict[str, Any] | None = None,
+    **details: Any,
+) -> AppError:
     """Build an `AppError` for `code`. Keyword arguments fill the message template and are
-    returned to the client as `details`. `message` replaces the default template."""
+    returned to the client as `details`. `format_args` only fill the template – for values
+    the contract doesn't put in `details` (e.g. limits). `message` replaces the template."""
     template = message if message is not None else ERROR_MESSAGES[code]
-    return AppError(code, template.format(**details), HTTP_STATUS[code], details or None)
+    text = template.format(**(format_args or {}), **details)
+    return AppError(code, text, HTTP_STATUS[code], details or None)
 
 
 def _response(
